@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class PlacesService {
-  final String apiKey = 'AIzaSyAtp6cyKwICYjH4FvoWZiUFCmsP6vDchi4'; // 🔑 Put your API key here
+  final String apiKey = dotenv.env['GOOGLE_MAPS_API_KEY']!; // 🔑 Put your API key here
 
     Future<List<dynamic>> findNearbyClinics(Position position, {double radius = 3000}) async {
     final url = Uri.parse(
