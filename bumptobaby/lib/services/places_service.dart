@@ -4,10 +4,28 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class PlacesService {
-  final String apiKey = dotenv.env['GOOGLE_MAPS_API_KEY']!; // 🔑 Put your API key here
+  final String apiKey = dotenv.env['GOOGLE_MAPS_API_KEY']!;
 
-    Future<List<dynamic>> findNearbyClinics(Position position, {double radius = 3000}) async {
-    final url = Uri.parse(
+  Future<List<dynamic>> findCombinedClinics(Position position, {double radius = 3000}) async {
+    final maternityUrl = Uri.parse(
+      'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+      '?location=${position.latitude},${position.longitude}'
+      '&radius=$radius'
+      '&type=hospital'
+      '&keyword=maternity OR prenatal OR pregnancy OR gynecology OR women health clinic'
+      '&key=$apiKey',
+    );
+
+    final vaccinationUrl = Uri.parse(
+      'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+      '?location=${position.latitude},${position.longitude}'
+      '&radius=$radius'
+      '&type=hospital'
+      '&keyword=vaccination OR immunization'
+      '&key=$apiKey',
+    );
+
+    final maternityDoctorUrl = Uri.parse(
       'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
       '?location=${position.latitude},${position.longitude}'
       '&radius=$radius'
@@ -16,35 +34,92 @@ class PlacesService {
       '&key=$apiKey',
     );
 
+    final vaccinationDoctorUrl = Uri.parse(
+      'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+      '?location=${position.latitude},${position.longitude}'
+      '&radius=$radius'
+      '&type=doctor'
+      '&keyword=vaccination OR immunization'
+      '&key=$apiKey',
+    );
+
     try {
-    print('Requesting URL: $url');
-    final response = await http.get(url);
+      final maternityHospitalResults = await _fetchAllPages(maternityUrl, category: 'maternity');
+      final maternityDoctorResults = await _fetchAllPages(maternityDoctorUrl, category: 'maternity');
+      final vaccinationHospitalResults = await _fetchAllPages(vaccinationUrl, category: 'vaccination');
+      final vaccinationDoctorResults = await _fetchAllPages(vaccinationDoctorUrl, category: 'vaccination');
 
-    if (response.statusCode == 200) {
-      final jsonResponse = json.decode(response.body);
 
-      // Check if API returned an error
-      if (jsonResponse['status'] != 'OK') {
-        final errorMessage = jsonResponse['error_message'] ?? jsonResponse['status'];
-        throw Exception('Places API error: $errorMessage');
+      // Combine and deduplicate by place_id
+      final Map<String, dynamic> combinedMap = {};
+      for (var item in maternityHospitalResults) {
+        combinedMap[item['place_id']] = item;
+      }
+      for (var item in maternityDoctorResults) {
+        combinedMap[item['place_id']] = item;
+      }
+      for (var item in vaccinationHospitalResults) {
+        combinedMap[item['place_id']] = item;
+      }
+      for (var item in vaccinationDoctorResults) {
+        combinedMap[item['place_id']] = item;
       }
 
-      print('API call successful: found ${jsonResponse['results'].length} results');
-      return jsonResponse['results'];
-    } else {
-      throw Exception('Failed to fetch clinics. Status code: ${response.statusCode}');
+      final combinedList = combinedMap.values.toList();
+      print('Combined API call successful: ${combinedList.length} unique results');
+      return combinedList;
+
+    } catch (e) {
+      print('Error in findCombinedClinics(): $e');
+      throw Exception('Error fetching combined clinics: $e');
     }
-  } catch (e) {
-    print('Error in findNearbyClinics(): $e');
-    throw Exception('Error fetching nearby clinics: $e');
   }
+
+  Future<List<dynamic>> _fetchAllPages(Uri url, {required String category}) async {
+    List<dynamic> allResults = [];
+    String? nextPageToken;
+
+    do {
+      final response = await http.get(url.replace(queryParameters: {
+        ...url.queryParameters,
+        if (nextPageToken != null) 'pagetoken': nextPageToken,
+      }));
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to fetch $category clinics. Status code: ${response.statusCode}');
+      }
+
+      final jsonData = json.decode(response.body);
+      final status = jsonData['status'];
+      if (status != 'OK' && status != 'ZERO_RESULTS') {
+        final errorMessage = jsonData['error_message'] ?? status;
+        throw Exception('$category API error: $errorMessage');
+      }
+
+      final results = (jsonData['results'] ?? []) as List<dynamic>;
+
+      // Tag category on each item
+      for (var item in results) {
+        item['category'] = category;
+      }
+
+      allResults.addAll(results);
+
+      nextPageToken = jsonData['next_page_token'];
+      if (nextPageToken != null) {
+        // Google requires a short delay before using next_page_token
+        await Future.delayed(const Duration(seconds: 2));
+      }
+    } while (nextPageToken != null);
+
+    return allResults;
   }
 
   Future<Map<String, dynamic>> getClinicDetails(String placeId) async {
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/place/details/json'
       '?place_id=$placeId'
-      '&fields=name,formatted_address,formatted_phone_number,opening_hours,website,geometry'
+      '&fields=name,formatted_address,formatted_phone_number,opening_hours,website,geometry,rating'
       '&key=$apiKey',
     );
 

@@ -7,7 +7,6 @@ import '../services/location_service.dart';
 import '../services/places_service.dart';
 import '../widgets/clinic_details_sheet.dart';
 
-
 class NearestClinicMapScreen extends StatefulWidget {
   const NearestClinicMapScreen({Key? key}) : super(key: key);
 
@@ -20,11 +19,13 @@ class _NearestClinicMapScreenState extends State<NearestClinicMapScreen> {
   Set<Marker> _markers = {};
   LatLng? _currentLocation;
   String status = 'Loading map...';
-  BitmapDescriptor? clinicIcon;
+  List<dynamic> clinics = [];
+  double _selectedRadius = 3000;
+  final List<double> _radiusOptions = [1000, 3000, 5000];
 
-  double _selectedRadius = 3000; // default 3km
-
-  final List<double> _radiusOptions = [1000, 3000, 5000]; // 1km, 3km, 5km
+  bool showListView = false;
+  TextEditingController _searchController = TextEditingController();
+  String searchQuery = '';
 
   @override
   void initState() {
@@ -40,10 +41,11 @@ class _NearestClinicMapScreenState extends State<NearestClinicMapScreen> {
       Position position = await locationService.getCurrentLocation();
       LatLng userLatLng = LatLng(position.latitude, position.longitude);
 
-      List<dynamic> clinics = await placesService.findNearbyClinics(
+      final loadedClinics = await placesService.findCombinedClinics(
         position,
         radius: _selectedRadius,
       );
+      print('Total combined clinics found: ${loadedClinics.length}');
 
       Set<Marker> markers = {
         Marker(
@@ -54,45 +56,56 @@ class _NearestClinicMapScreenState extends State<NearestClinicMapScreen> {
         ),
       };
 
-      for (var clinic in clinics) {
-  final lat = clinic['geometry']['location']['lat'];
-  final lng = clinic['geometry']['location']['lng'];
-  final placeId = clinic['place_id'];
+      for (var clinic in loadedClinics) {
+        final lat = clinic['geometry']['location']['lat'];
+        final lng = clinic['geometry']['location']['lng'];
+        final placeId = clinic['place_id'];
+        final name = clinic['name'];
+        final types = List<String>.from(clinic['types'] ?? []);
+        final rating = clinic['rating']?.toString() ?? 'N/A';
 
-  final marker = Marker(
-  markerId: MarkerId(placeId),
-  position: LatLng(lat, lng),
-  icon: clinicIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-  infoWindow: InfoWindow(
-    title: clinic['name'],
-    onTap: () async {
-      try {
-        final details = await placesService.getClinicDetails(placeId);
-        showModalBottomSheet(
-          context: context,
-          builder: (context) => ClinicDetailsSheet(details: details),
+        final isMaternity = name.toLowerCase().contains('maternity') ||
+            name.toLowerCase().contains('prenatal') ||
+            types.contains('doctor');
+
+        final markerColor =
+            isMaternity ? BitmapDescriptor.hueRose : BitmapDescriptor.hueAzure;
+
+        final marker = Marker(
+          markerId: MarkerId(placeId),
+          position: LatLng(lat, lng),
+          icon: BitmapDescriptor.defaultMarkerWithHue(markerColor),
+          infoWindow: InfoWindow(
+            title: name,
+            snippet: 'Rating: $rating ★',
+            onTap: () async {
+              try {
+                final details = await placesService.getClinicDetails(placeId);
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: Colors.white,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(16)),
+                  ),
+                  builder: (context) => ClinicDetailsSheet(details: details),
+                );
+              } catch (e) {
+                debugPrint('Error loading details: $e');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Failed to load clinic details.')),
+                );
+              }
+            },
+          ),
         );
-      } catch (e) {
-        debugPrint('Error loading details: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to load clinic details.')),
-        );
+        markers.add(marker);
       }
-    },
-  ),
-);
-markers.add(marker);
-
-
-  //   icon: clinicIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-  // );
-  // markers.add(marker);
-}
-
 
       setState(() {
         _currentLocation = userLatLng;
         _markers = markers;
+        clinics = loadedClinics;
         status = clinics.isEmpty ? 'No clinics found nearby.' : 'Clinics loaded!';
       });
 
@@ -107,23 +120,25 @@ markers.add(marker);
     }
   }
 
-  Future<void> _openDirections(double lat, double lng, String name) async {
-    final googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&destination_place_id=$name');
-    if (await canLaunchUrl(googleMapsUrl)) {
-      await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open Google Maps.')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final filteredClinics = clinics.where((clinic) {
+      final name = clinic['name'].toString().toLowerCase();
+      return name.contains(searchQuery.toLowerCase());
+    }).toList();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nearby Clinics Map'),
         actions: [
+          IconButton(
+            icon: Icon(showListView ? Icons.map : Icons.list),
+            onPressed: () {
+              setState(() {
+                showListView = !showListView;
+              });
+            },
+          ),
           DropdownButton<double>(
             value: _selectedRadius,
             dropdownColor: Colors.white,
@@ -149,16 +164,81 @@ markers.add(marker);
       ),
       body: _currentLocation == null
           ? Center(child: Text(status))
-          : GoogleMap(
-              initialCameraPosition: CameraPosition(
-                target: _currentLocation!,
-                zoom: 14,
-              ),
-              markers: _markers,
-              myLocationEnabled: true,
-              myLocationButtonEnabled: true,
-              onMapCreated: (controller) => _mapController.complete(controller),
-            ),
+          : showListView
+              ? Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: const InputDecoration(
+                          hintText: 'Search clinic name...',
+                          prefixIcon: Icon(Icons.search),
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            searchQuery = value;
+                          });
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: filteredClinics.length,
+                        itemBuilder: (context, index) {
+                          final clinic = filteredClinics[index];
+                          final name = clinic['name'];
+                          final vicinity = clinic['vicinity'] ?? '';
+                          final rating =
+                              clinic['rating']?.toString() ?? 'N/A';
+                          final lat = clinic['geometry']['location']['lat'];
+                          final lng = clinic['geometry']['location']['lng'];
+                          return ListTile(
+                            title: Text(name),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(vicinity),
+                                Text('Rating: $rating ★'),
+                              ],
+                            ),
+                            trailing: TextButton(
+                              child: const Text('Directions'),
+                              onPressed: () {
+                                _openDirections(lat, lng, name);
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                )
+              : GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: _currentLocation!,
+                    zoom: 14,
+                  ),
+                  markers: _markers,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: true,
+                  onMapCreated: (controller) =>
+                      _mapController.complete(controller),
+                ),
     );
+  }
+
+  Future<void> _openDirections(
+      double lat, double lng, String name) async {
+    final googleMapsUrl = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&destination_place_id=$name');
+    if (await canLaunchUrl(googleMapsUrl)) {
+      await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open Google Maps.')),
+      );
+    }
   }
 }
