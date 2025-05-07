@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ClinicDetailsSheet extends StatelessWidget {
@@ -6,12 +7,15 @@ class ClinicDetailsSheet extends StatelessWidget {
 
   const ClinicDetailsSheet({Key? key, required this.details}) : super(key: key);
 
-  void _launchUrl(String url) async {
+  void _launchUrl(BuildContext context, String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
       debugPrint('Could not launch $url');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open $url')),
+      );
     }
   }
 
@@ -37,21 +41,36 @@ class ClinicDetailsSheet extends StatelessWidget {
               title: Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               subtitle: Text(address),
               onTap: lat != null && lng != null
-                  ? () => _launchUrl('https://www.google.com/maps/search/?api=1&query=$lat,$lng')
+                  ? () => _launchUrl(context, 'https://www.google.com/maps/search/?api=1&query=$lat,$lng')
                   : null,
             ),
             if (phone != null)
               ListTile(
                 leading: const Icon(Icons.phone),
                 title: Text(phone),
-                onTap: () => _launchUrl('tel:$phone'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.copy),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: phone));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Phone number copied to clipboard')),
+                    );
+                  },
+                ),
+                onTap: () => _launchUrl(context, 'tel:$phone'),
               ),
             if (website != null)
               ListTile(
                 leading: const Icon(Icons.language),
                 title: const Text('Website'),
                 subtitle: Text(website),
-                onTap: () => _launchUrl(website),
+                onTap: () {
+                  final trimmedWebsite = website.trim();
+                  final fixedUrl = trimmedWebsite.toLowerCase().startsWith('http') 
+                      ? trimmedWebsite 
+                      : 'https://$trimmedWebsite';
+                  _launchUrl(context, fixedUrl);
+                },
               ),
             if (openingHours.isNotEmpty)
               Padding(
@@ -70,12 +89,12 @@ class ClinicDetailsSheet extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: () => _launchUrl('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng'),
+                    onPressed: () => _launchUrl(context, 'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng'),
                     icon: const Icon(Icons.directions),
                     label: const Text('Google Maps'),
                   ),
                   ElevatedButton.icon(
-                    onPressed: () => _launchUrl('https://waze.com/ul?ll=$lat,$lng&navigate=yes'),
+                    onPressed: () => _launchUrl(context, 'https://waze.com/ul?ll=$lat,$lng&navigate=yes'),
                     icon: const Icon(Icons.directions_car),
                     label: const Text('Waze'),
                   ),
@@ -84,7 +103,13 @@ class ClinicDetailsSheet extends StatelessWidget {
             const SizedBox(height: 10),
             Center(
               child: ElevatedButton.icon(
-                onPressed: phone != null ? () => _launchUrl('tel:$phone') : null,
+                onPressed: phone != null && phone.isNotEmpty
+                    ? () async {
+                        final sanitizedPhone = phone.replaceAll(RegExp(r'[^\d+]'), '');
+                        final telUrl = 'tel:$sanitizedPhone';
+                        _launchUrl(context, telUrl);
+                    }
+                    : null,
                 icon: const Icon(Icons.local_phone),
                 label: const Text('Book Now'),
               ),
