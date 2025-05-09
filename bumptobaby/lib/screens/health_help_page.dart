@@ -377,42 +377,42 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed, // To show all labels
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today_outlined),
-            label: 'My Schedule',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.child_care_outlined),
-            label: 'Baby Tracker',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.monitor_heart_outlined), // Using a health related icon
-            activeIcon: Icon(Icons.monitor_heart),
-            label: 'Health Help',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline),
-            label: 'Community',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.pink[400], // Or your app's primary color
-        unselectedItemColor: Colors.grey[600],
-        showUnselectedLabels: true,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-            // TODO: Implement navigation to other pages
-          });
-        },
-      ),
+      // bottomNavigationBar: BottomNavigationBar(
+      //   type: BottomNavigationBarType.fixed, // To show all labels
+      //   items: const <BottomNavigationBarItem>[
+      //     BottomNavigationBarItem(
+      //       icon: Icon(Icons.home_outlined),
+      //       label: 'Home',
+      //     ),
+      //     BottomNavigationBarItem(
+      //       icon: Icon(Icons.calendar_today_outlined),
+      //       label: 'My Schedule',
+      //     ),
+      //     BottomNavigationBarItem(
+      //       icon: Icon(Icons.child_care_outlined),
+      //       label: 'Baby Tracker',
+      //     ),
+      //     BottomNavigationBarItem(
+      //       icon: Icon(Icons.monitor_heart_outlined), // Using a health related icon
+      //       activeIcon: Icon(Icons.monitor_heart),
+      //       label: 'Health Help',
+      //     ),
+      //     BottomNavigationBarItem(
+      //       icon: Icon(Icons.people_outline),
+      //       label: 'Community',
+      //     ),
+      //   ],
+      //   currentIndex: _selectedIndex,
+      //   selectedItemColor: Colors.pink[400], // Or your app's primary color
+      //   unselectedItemColor: Colors.grey[600],
+      //   showUnselectedLabels: true,
+      //   onTap: (index) {
+      //     setState(() {
+      //       _selectedIndex = index;
+      //       // TODO: Implement navigation to other pages
+      //     });
+      //   },
+      // ),
     );
   }
 }
