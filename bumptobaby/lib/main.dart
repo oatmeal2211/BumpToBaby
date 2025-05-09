@@ -4,7 +4,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:bumptobaby/screens/nearest_clinic_screen.dart';
 import 'package:bumptobaby/screens/signup_screen.dart';
 import 'package:bumptobaby/screens/login_screen.dart';
-import 'package:bumptobaby/screens/health_help_page.dart'; // Adjust the path as necessary
+import 'package:bumptobaby/screens/health_help_page.dart';
+import 'package:bumptobaby/screens/health_survey_screen.dart'; // Import the health survey screen
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -96,7 +97,7 @@ class _HomePageState extends State<HomePage> {
 class MySchedulePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Center(child: Text('My Schedule Page')); // Placeholder content
+    return const HealthSurveyScreen(); // Use our health survey screen here
   }
 }
 
