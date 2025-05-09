@@ -1,17 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:bumptobaby/screens/nearest_clinic_screen.dart';
+import 'package:bumptobaby/screens/health_survey_screen.dart';
+import 'package:bumptobaby/screens/health_schedule_screen.dart';
+import 'package:bumptobaby/screens/health_help_page.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   final String username;
   
   const HomeScreen({Key? key, required this.username}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Color(0xFFF9F2F2),
-      body: SafeArea(
-        child: Column(
+  _HomeScreenState createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _selectedIndex = 0;
+
+  // List of screens for bottom navigation
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      _buildHomeContent(),
+      const HealthSurveyScreen(),
+      Center(child: Text('Baby Tracker Page')), // Placeholder for Baby Tracker
+      const HealthHelpPage(),
+      Center(child: Text('Community Page')), // Placeholder for Community
+    ];
+  }
+
+  Widget _buildHomeContent() {
+    return Column(
           children: [
             // Top part with greeting and profile
             Padding(
@@ -20,7 +42,7 @@ class HomeScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Hi $username!',
+                'Hi ${widget.username}!',
                     style: GoogleFonts.poppins(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -51,7 +73,10 @@ class HomeScreen extends StatelessWidget {
                       icon: Icons.local_hospital,
                       color: Color(0xFFAFDCF8),
                       onTap: () {
-                        // Navigate to clinic finder
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const NearestClinicMapScreen()),
+                    );
                       },
                     ),
                     
@@ -61,7 +86,10 @@ class HomeScreen extends StatelessWidget {
                       icon: Icons.favorite,
                       color: Color(0xFFF8AFAF),
                       onTap: () {
-                        // Navigate to health tracker
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const HealthSurveyScreen()),
+                    );
                       },
                     ),
                     
@@ -108,9 +136,18 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
             ),
-            
-            // Bottom navigation bar
-            Container(
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Color(0xFFF9F2F2),
+      body: SafeArea(
+        child: _screens[_selectedIndex],
+      ),
+      bottomNavigationBar: Container(
               height: 60,
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -130,12 +167,44 @@ class HomeScreen extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  NavBarItem(icon: Icons.home, label: "Home", isSelected: true),
-                  NavBarItem(icon: Icons.calendar_today, label: "My Schedule"),
-                  NavBarItem(icon: Icons.monitor_heart, label: "Baby Tracker"),
-                  NavBarItem(icon: Icons.medical_services, label: "Doctor Help"),
-                  NavBarItem(icon: Icons.people, label: "Community"),
-                ],
+            GestureDetector(
+              onTap: () => setState(() => _selectedIndex = 0),
+              child: NavBarItem(
+                icon: Icons.home, 
+                label: "Home", 
+                isSelected: _selectedIndex == 0,
+              ),
+            ),
+            GestureDetector(
+              onTap: () => setState(() => _selectedIndex = 1),
+              child: NavBarItem(
+                icon: Icons.calendar_today, 
+                label: "My Schedule", 
+                isSelected: _selectedIndex == 1,
+              ),
+            ),
+            GestureDetector(
+              onTap: () => setState(() => _selectedIndex = 2),
+              child: NavBarItem(
+                icon: Icons.monitor_heart, 
+                label: "Baby Tracker", 
+                isSelected: _selectedIndex == 2,
+              ),
+            ),
+            GestureDetector(
+              onTap: () => setState(() => _selectedIndex = 3),
+              child: NavBarItem(
+                icon: Icons.medical_services, 
+                label: "Doctor Help", 
+                isSelected: _selectedIndex == 3,
+              ),
+            ),
+            GestureDetector(
+              onTap: () => setState(() => _selectedIndex = 4),
+              child: NavBarItem(
+                icon: Icons.people, 
+                label: "Community", 
+                isSelected: _selectedIndex == 4,
               ),
             ),
           ],
