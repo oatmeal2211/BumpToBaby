@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import flutter_dotenv
+import './health_help_page.dart'; // Import the new page
 
-void main() {
+Future<void> main() async { // Make main async
+  WidgetsFlutterBinding.ensureInitialized(); // Ensure bindings are initialized
+  await dotenv.load(fileName: ".env"); // Load the .env file
   runApp(const MyApp());
 }
 
@@ -108,6 +112,16 @@ class _MyHomePageState extends State<MyHomePage> {
             Text(
               '$_counter',
               style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 20), // Add some spacing
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const HealthHelpPage()),
+                );
+              },
+              child: const Text('Go to Health Help Chat'),
             ),
           ],
         ),
