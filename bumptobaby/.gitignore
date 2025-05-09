@@ -45,3 +45,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 /android/app/google-services.json
+
+# Dotenv file
+.env
+
+# Rider files
