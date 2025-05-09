@@ -123,6 +123,16 @@ class _MyHomePageState extends State<MyHomePage> {
               '$_counter',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
+            const SizedBox(height: 20), // Add some spacing
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const HealthHelpPage()),
+                );
+              },
+              child: const Text('Go to Health Help Chat'),
+            ),
           ],
         ),
       ),
