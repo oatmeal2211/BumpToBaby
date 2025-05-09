@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'signup_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:bumptobaby/screens/home_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -23,7 +25,19 @@ class _LoginScreenState extends State<LoginScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
         child: ListView(
           children: [
-            const SizedBox(height: 60),
+            const SizedBox(height: 50),
+
+            // 👶 Centered Icon
+            Center(
+              child: Image.asset(
+                'lib/assets/images/BumpToBaby Logo.png', // Replace with your asset path
+                height: 150,
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // 🌈 Gradient Text
             Center(
               child: Text(
                 'Welcome to\nBumpToBaby!',
@@ -39,6 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             const SizedBox(height: 10),
+
             Center(
               child: Text(
                 'Sign in to your account',
@@ -46,6 +61,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             const SizedBox(height: 30),
+
             Form(
               key: _formKey,
               child: Column(
@@ -55,6 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
             ),
+
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
@@ -65,6 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             const SizedBox(height: 10),
+
             ElevatedButton(
               onPressed: isLoading ? null : _handleLogin,
               style: ElevatedButton.styleFrom(
@@ -76,12 +94,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   ? CircularProgressIndicator(color: Colors.white)
                   : Text("Sign in", style: TextStyle(fontSize: 16)),
             ),
+
             const SizedBox(height: 20),
+
             Center(
               child: TextButton(
                 onPressed: () {
-                  Navigator.pushReplacement(context,
-                    MaterialPageRoute(builder: (_) => SignUpScreen()));
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => SignUpScreen()),
+                  );
                 },
                 child: Text.rich(
                   TextSpan(
@@ -130,12 +152,32 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => isLoading = true);
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
-      // TODO: Navigate to your home screen after successful login
+      
+      // Get user data from Firestore
+      String username = 'User';
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userCredential.user!.uid)
+            .get();
+        
+        if (userDoc.exists && userDoc.data()!.containsKey('name')) {
+          username = userDoc.data()!['name'];
+        }
+      } catch (e) {
+        print('Error fetching user data: $e');
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Login successful")));
+      
+      // Navigate to home screen
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => HomeScreen(username: username)),
+      );
     } on FirebaseAuthException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? "Login failed")));
     } finally {
