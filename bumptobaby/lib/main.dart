@@ -7,6 +7,7 @@ import 'package:bumptobaby/screens/nearest_clinic_screen.dart';
 import 'package:bumptobaby/screens/signup_screen.dart';
 import 'package:bumptobaby/screens/login_screen.dart';
 import 'package:bumptobaby/screens/home_screen.dart';
+import 'package:bumptobaby/screens/health_help_page.dart'; // Adjust the path as necessary
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -105,21 +106,87 @@ class HomePage extends StatelessWidget {
   const HomePage({Key? key}) : super(key: key);
 
   @override
+  _HomePageState createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  int _selectedIndex = 0; // Track the selected index for the bottom navigation bar
+
+  // List of pages to navigate to
+  final List<Widget> _pages = [
+    MyHomePage(title: 'Home'), // Assuming this is your home page
+    MySchedulePage(), // Placeholder for My Schedule page
+    BabyTrackerPage(), // Placeholder for Baby Tracker page
+    const HealthHelpPage(), // Health Help page - Ensure this is the imported one
+    CommunityPage(), // Placeholder for Community page
+  ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Find Nearest Clinic')),
       body: Center(
-        child: ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const NearestClinicMapScreen()),
-            );
-          },
-          child: const Text('Find Nearest Clinic'),
-        ),
+        child: _pages[_selectedIndex], // Display the selected page
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_today),
+            label: 'My Schedule',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.child_care),
+            label: 'Baby Tracker',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.health_and_safety),
+            label: 'Health Help',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people),
+            label: 'Community',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: Colors.pink[400],
+        unselectedItemColor: Colors.grey[600],
+        onTap: _onItemTapped,
       ),
     );
+  }
+}
+
+// Placeholder for My Schedule Page
+class MySchedulePage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(child: Text('My Schedule Page')); // Placeholder content
+  }
+}
+
+// Placeholder for Baby Tracker Page
+class BabyTrackerPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(child: Text('Baby Tracker Page')); // Placeholder content
+  }
+}
+
+// Placeholder for Community Page
+class CommunityPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(child: Text('Community Page')); // Placeholder content
   }
 }
 
@@ -197,6 +264,7 @@ class _MyHomePageState extends State<MyHomePage> {
               '$_counter',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
+            const SizedBox(height: 20), // Add some spacing
           ],
         ),
       ),
