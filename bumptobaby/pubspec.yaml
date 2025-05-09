@@ -47,6 +47,7 @@ dependencies:
   http: ^1.2.1
   url_launcher: ^6.2.5
   google_maps_flutter: ^2.6.0
+  image_picker: ^1.0.7
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -71,6 +72,12 @@ flutter:
   assets:
     - .env
     - lib/assets/images/BumpToBaby Logo.png
+    - lib/assets/images/vaccination.png
+    - lib/assets/images/smart_health_tracker.png
+    - lib/assets/images/growth_development.png
+    - lib/assets/images/nutrition_meals.png
+    - lib/assets/images/audio_visual.png
+    - lib/assets/images/family_planning.png
 
   # To add assets to your application, add an assets section, like this:
   #   - images/a_dot_burr.jpeg

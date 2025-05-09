@@ -147,6 +147,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       final String name = nameController.text.trim();
       
+      // Store user data in Firestore
       await FirebaseFirestore.instance
           .collection('users')
           .doc(userCredential.user!.uid)
@@ -154,6 +155,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             'name': name,
             'phoneNumber': phoneController.text.trim(),
             'email': emailController.text.trim(),
+            'profileImageUrl': '',
+            'createdAt': FieldValue.serverTimestamp(),
           });
       
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Account created successfully")));
