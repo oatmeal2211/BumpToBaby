@@ -3,11 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
-import 'package:bumptobaby/screens/nearest_clinic_screen.dart';
 import 'package:bumptobaby/screens/signup_screen.dart';
 import 'package:bumptobaby/screens/login_screen.dart';
-import 'package:bumptobaby/screens/health_help_page.dart';
-import 'package:bumptobaby/screens/health_survey_screen.dart'; // Import the health survey screen
 import 'package:bumptobaby/screens/home_screen.dart';
 
 void main() async {
