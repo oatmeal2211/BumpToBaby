@@ -46,9 +46,10 @@ dependencies:
   firebase_storage: ^12.4.5
   geolocator: ^10.1.0
   http: ^1.2.1
-  url_launcher: ^6.2.5
+  url_launcher: ^6.0.20  # Check for the latest version
   google_maps_flutter: ^2.6.0
   image_picker: ^1.0.7
+  speech_to_text: ^7.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
