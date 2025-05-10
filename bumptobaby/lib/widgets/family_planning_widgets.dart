@@ -9,6 +9,7 @@ class ContraceptiveOptionCard extends StatelessWidget {
   final String effectiveness;
   final IconData icon;
   final Color color;
+  final String gender;
   final VoidCallback onTap;
 
   const ContraceptiveOptionCard({
@@ -18,6 +19,7 @@ class ContraceptiveOptionCard extends StatelessWidget {
     required this.effectiveness,
     required this.icon,
     required this.color,
+    this.gender = '',
     required this.onTap,
   }) : super(key: key);
 
@@ -45,12 +47,33 @@ class ContraceptiveOptionCard extends StatelessWidget {
                   ),
                   SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      title,
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (gender.isNotEmpty)
+                          Container(
+                            margin: EdgeInsets.only(top: 4),
+                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: gender == 'Female' ? Colors.pink.withOpacity(0.2) : Colors.blue.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              gender,
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                color: gender == 'Female' ? Colors.pink : Colors.blue,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   Container(
