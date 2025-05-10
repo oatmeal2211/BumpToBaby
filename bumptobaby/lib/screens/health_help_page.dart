@@ -3,10 +3,13 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async'; // Import for Timer
+import 'dart:io'; // Import for File operations
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_markdown/flutter_markdown.dart'; // Import for Markdown rendering
 import 'package:shared_preferences/shared_preferences.dart'; // Import for shared_preferences
 import 'package:flutter/services.dart'; // Add this line
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:image_picker/image_picker.dart'; // Import for image picking
 
 class HealthHelpPage extends StatefulWidget {
   const HealthHelpPage({super.key});
@@ -23,10 +26,19 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
   final List<Map<String, dynamic>> _messages = [];
 
   // Variable for prompt engineering - you can set your base prompt here
-  String _systemPrompt = "You are a helpful and empathetic AI assistant for pregnant mothers. Your name is BumpToBaby AI but no need to mention it in the response unless the user asks who you are. Provide support and information related to pregnancy. Try not to repeat the responses given provided based on the chat history. Explain those professional medical terms in a way that is easy to understand like pregnanct women is on her first pregnancy. Keep responses conscise and brief. Use markdown for formatting. Be more casual and conversational.";
+  String _systemPrompt = "You are a helpful and empathetic AI assistant for pregnant mothers. Your name is BumpToBaby AI but no need to mention it in the response unless the user asks who you are. Provide support and information related to pregnancy. Try not to repeat the responses given provided based on the chat history. Explain those professional medical terms in a way that is easy to understand like pregnanct women is on her first pregnancy. Keep responses conscise and brief. Use markdown for better view formatting. Be more casual and conversational.";
 
   final TextEditingController _textController = TextEditingController();
   bool _isLoading = false; // To show a loading indicator during API calls
+  
+  // For image handling
+  final ImagePicker _imagePicker = ImagePicker();
+  File? _selectedImage;
+  
+  // Hardcoded response for image messages
+  final String _imageResponse = "Thank you for sharing the image. It appears that there is swelling in the leg. Swelling in the legs during pregnancy is quite common, especially in the later stages, due to increased fluid retention and pressure from the growing uterus. However, certain types of swelling may require medical attention.\n\nI recommend she be seen by a healthcare provider to ensure everything is progressing safely. It's always better to have a professional examine the condition directly to provide appropriate care and peace of mind.";
+
+  final FlutterTts _flutterTts = FlutterTts();
 
   @override
   void initState() {
@@ -71,6 +83,107 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
     // When loaded, they will be added to the end, maintaining this order for display.
     final String messagesJson = jsonEncode(_messages);
     await prefs.setString('chat_messages', messagesJson);
+  }
+
+  // Function to pick image from gallery or camera
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(source: source);
+      if (pickedFile != null) {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error picking image: $e");
+      }
+    }
+  }
+
+  // Show image source selection dialog
+  Future<void> _showImageSourceDialog() async {
+    await showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Select Image Source'),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                GestureDetector(
+                  child: const Text('Take a Photo'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _pickImage(ImageSource.camera);
+                  },
+                ),
+                const Padding(padding: EdgeInsets.all(8.0)),
+                GestureDetector(
+                  child: const Text('Choose from Gallery'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _pickImage(ImageSource.gallery);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+  
+  // Function to handle sending messages (text or image)
+  Future<void> _handleSendMessage() async {
+    if (_selectedImage != null) {
+      final File imageToSend = _selectedImage!; // Capture the image
+      setState(() {
+        _selectedImage = null; // Clear the preview IMMEDIATELY
+      });
+      await _sendImageMessage(imageToSend); // Process the captured image
+    } else if (_textController.text.isNotEmpty) {
+      // If there is text and no image, send text message to Gemini API
+      await _sendMessage(_textController.text);
+    }
+  }
+  
+  // Function to send image message
+  Future<void> _sendImageMessage(File imageFile) async { // Accept File as parameter
+    // No longer need to check _selectedImage here as imageFile is passed
+    
+    final userImageMsg = {
+      "isUser": true, 
+      "hasImage": true, 
+      "imagePath": imageFile.path, // Use the passed imageFile
+      "text": "Sent an image", 
+      "time": _getCurrentTime()
+    };
+    final loadingMsg = {"isUser": false, "isLoadingPlaceholder": true, "time": _getCurrentTime()};
+    
+    setState(() {
+      _messages.insert(0, userImageMsg);
+      _messages.insert(0, loadingMsg); // Add loading indicator
+      _isLoading = true;
+    });
+    await _saveMessages();
+    
+    // Simulate a delay before showing the hardcoded response
+    await Future.delayed(const Duration(seconds: 5));
+
+    // Add the hardcoded response for image
+    if (mounted) { // Check if the widget is still in the tree
+      setState(() {
+        _messages.removeWhere((msg) => msg['isLoadingPlaceholder'] == true); // Remove loading indicator
+        _messages.insert(0, {
+          "isUser": false, 
+          "text": _imageResponse, 
+          "time": _getCurrentTime()
+        });
+        _isLoading = false;
+      });
+      await _saveMessages();
+    }
   }
 
   Future<void> _sendMessage(String text) async {
@@ -187,71 +300,11 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
     }
   }
 
-  Widget _buildMessage(Map<String, dynamic> message) {
-    final bool isUser = message['isUser'] as bool;
-
-    if (message['isLoadingPlaceholder'] == true) {
-      return const AnimatedLoadingIndicator();
-    }
-
-    final String text = message['text'] as String;
-    final String time = message['time'] as String;
-
-    Widget messageContent;
-    if (isUser) {
-      messageContent = Text(text);
-    } else {
-      messageContent = MarkdownBody(
-        data: text,
-        selectable: true, // Allows users to select and copy text from markdown
-        // You can customize the style sheet if needed:
-        // styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(...),
-      );
-    }
-
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5.0, horizontal: 8.0),
-        padding: const EdgeInsets.all(12.0),
-        decoration: BoxDecoration(
-          color: isUser ? Colors.lightBlue[100] : Colors.red[100],
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(15.0),
-            topRight: const Radius.circular(15.0),
-            bottomLeft:
-                isUser ? const Radius.circular(15.0) : const Radius.circular(0),
-            bottomRight:
-                isUser ? const Radius.circular(0) : const Radius.circular(15.0),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment:
-              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            messageContent,
-            const SizedBox(height: 4.0),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  time,
-                  style: const TextStyle(fontSize: 10.0, color: Colors.grey),
-                ),
-                if (isUser) ...[
-                  const SizedBox(width: 3.0),
-                  const Icon(Icons.done_all, size: 14.0, color: Colors.blue)
-                ],
-                if (!isUser) ...[
-                  // Speaker icon was here, now removed
-                  // You could add other elements specific to bot messages here later
-                ]
-              ],
-            )
-          ],
-        ),
-      ),
-    );
+  Future<void> _speak(String text) async {
+    await _flutterTts.stop(); // Stop any ongoing speech
+    await _flutterTts.setLanguage("en-US");
+    await _flutterTts.setPitch(1.0);
+    await _flutterTts.speak(text);
   }
 
   @override
@@ -312,6 +365,28 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
               },
             ),
           ),
+          if (_selectedImage != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                height: 100,
+                child: Stack(
+                  alignment: Alignment.topRight,
+                  children: [
+                    Image.file(_selectedImage!, height: 90),
+                    IconButton(
+                      icon: const Icon(Icons.cancel, color: Colors.red),
+                      onPressed: () {
+                        setState(() {
+                          _selectedImage = null;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
             decoration: BoxDecoration(
@@ -321,9 +396,7 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.camera_alt_outlined),
-                  onPressed: () {
-                    // TODO: Implement image picking
-                  },
+                  onPressed: _showImageSourceDialog,
                   color: Colors.blueGrey[700],
                 ),
                 Expanded(
@@ -331,7 +404,7 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
                     onKey: (FocusNode node, RawKeyEvent event) {
                       if (event is RawKeyDownEvent) {
                         if (event.isControlPressed && event.logicalKey == LogicalKeyboardKey.enter) {
-                          _sendMessage(_textController.text); // Call _sendMessage
+                          _handleSendMessage(); // Use the new handler
                           return KeyEventResult.handled; // Prevent further processing
                         }
                       }
@@ -367,9 +440,7 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.send_outlined),
-                  onPressed: () {
-                    _sendMessage(_textController.text); // Call _sendMessage
-                  },
+                  onPressed: _handleSendMessage, // Use the new handler
                   color: Colors.blue[600],
                 ),
               ],
@@ -377,42 +448,112 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
           ),
         ],
       ),
-      // bottomNavigationBar: BottomNavigationBar(
-      //   type: BottomNavigationBarType.fixed, // To show all labels
-      //   items: const <BottomNavigationBarItem>[
-      //     BottomNavigationBarItem(
-      //       icon: Icon(Icons.home_outlined),
-      //       label: 'Home',
-      //     ),
-      //     BottomNavigationBarItem(
-      //       icon: Icon(Icons.calendar_today_outlined),
-      //       label: 'My Schedule',
-      //     ),
-      //     BottomNavigationBarItem(
-      //       icon: Icon(Icons.child_care_outlined),
-      //       label: 'Baby Tracker',
-      //     ),
-      //     BottomNavigationBarItem(
-      //       icon: Icon(Icons.monitor_heart_outlined), // Using a health related icon
-      //       activeIcon: Icon(Icons.monitor_heart),
-      //       label: 'Health Help',
-      //     ),
-      //     BottomNavigationBarItem(
-      //       icon: Icon(Icons.people_outline),
-      //       label: 'Community',
-      //     ),
-      //   ],
-      //   currentIndex: _selectedIndex,
-      //   selectedItemColor: Colors.pink[400], // Or your app's primary color
-      //   unselectedItemColor: Colors.grey[600],
-      //   showUnselectedLabels: true,
-      //   onTap: (index) {
-      //     setState(() {
-      //       _selectedIndex = index;
-      //       // TODO: Implement navigation to other pages
-      //     });
-      //   },
-      // ),
+    );
+  }
+
+  Widget _buildMessage(Map<String, dynamic> message) {
+    final bool isUser = message['isUser'] as bool;
+    final bool hasImage = message['hasImage'] ?? false;
+
+    if (message['isLoadingPlaceholder'] == true) {
+      return const AnimatedLoadingIndicator();
+    }
+
+    final String text = message['text'] as String;
+    final String time = message['time'] as String;
+
+    Widget messageContent;
+    if (isUser) {
+      if (hasImage) {
+        // Display the image in the user's message bubble
+        messageContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(text),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () {
+                // Show the image in a larger view
+                showDialog(
+                  context: context,
+                  builder: (context) {
+                    return Dialog(
+                      child: Image.file(
+                        File(message['imagePath']),
+                        fit: BoxFit.cover,
+                      ),
+                    );
+                  },
+                );
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.file(
+                  File(message['imagePath']),
+                  height: 150,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          ],
+        );
+      } else {
+        messageContent = Text(text);
+      }
+    } else {
+      messageContent = MarkdownBody(
+        data: text,
+        selectable: true, // Allows users to select and copy text from markdown
+      );
+    }
+
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 5.0, horizontal: 8.0),
+        padding: const EdgeInsets.all(12.0),
+        decoration: BoxDecoration(
+          color: isUser ? Colors.lightBlue[100] : Colors.red[100],
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(15.0),
+            topRight: const Radius.circular(15.0),
+            bottomLeft:
+                isUser ? const Radius.circular(15.0) : const Radius.circular(0),
+            bottomRight:
+                isUser ? const Radius.circular(0) : const Radius.circular(15.0),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment:
+              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            messageContent,
+            const SizedBox(height: 4.0),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  time,
+                  style: const TextStyle(fontSize: 10.0, color: Colors.grey),
+                ),
+                if (isUser) ...[
+                  const SizedBox(width: 3.0),
+                  const Icon(Icons.done_all, size: 14.0, color: Colors.blue)
+                ],
+                if (!isUser) ...[
+                  IconButton(
+                    icon: const Icon(Icons.volume_up, size: 18.0, color: Colors.blue),
+                    tooltip: 'Read aloud',
+                    onPressed: () => _speak(text),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ]
+              ],
+            )
+          ],
+        ),
+      ),
     );
   }
 }

@@ -30,6 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_tts: ^3.8.2   # (check pub.dev for the latest version)
   flutter_dotenv: ^5.1.0
   flutter_markdown: ^0.7.1
   shared_preferences: ^2.2.3
