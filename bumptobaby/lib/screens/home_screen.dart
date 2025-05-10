@@ -14,6 +14,7 @@ import 'package:bumptobaby/screens/family_planning_screen.dart';
 import 'package:bumptobaby/screens/profile_screen.dart';
 import 'package:bumptobaby/screens/health_help_page.dart';
 import 'package:bumptobaby/screens/health_survey_screen.dart';
+import 'package:bumptobaby/screens/community_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String username;
@@ -73,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 3:
         return HealthHelpPage(); // Health Help
       case 4:
-        return Center(child: Text('Community Coming Soon')); // Community
+        return CommunityScreen(); // Community page
       default:
         return _buildHomePage();
     }
