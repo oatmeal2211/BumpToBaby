@@ -16,6 +16,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController passwordController = TextEditingController();
 
   bool isLoading = false;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: () {
-                  // TODO: Add password reset logic if needed
+                  _showResetPasswordDialog();
                 },
                 child: Text("Forgot your password?"),
               ),
@@ -147,39 +149,118 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  void _showResetPasswordDialog() {
+    final TextEditingController resetEmailController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Reset Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Enter your email address to receive a password reset link.'),
+            SizedBox(height: 16),
+            TextField(
+              controller: resetEmailController,
+              decoration: InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.emailAddress,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await _auth.sendPasswordResetEmail(email: resetEmailController.text.trim());
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Password reset email sent')),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error: ${e.toString()}')),
+                );
+              }
+            },
+            child: Text('Send Reset Link'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => isLoading = true);
+    
     try {
-      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+      // Use Firebase Auth directly for authentication
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
       
       // Get user data from Firestore
-      String username = 'User';
-      try {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userCredential.user!.uid)
-            .get();
-        
-        if (userDoc.exists && userDoc.data()!.containsKey('name')) {
-          username = userDoc.data()!['name'];
-        }
-      } catch (e) {
-        print('Error fetching user data: $e');
-      }
+      DocumentSnapshot userData = await _firestore
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .get();
       
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Login successful")));
+      String username = 'User';
+      
+      if (userData.exists) {
+        Map<String, dynamic> data = userData.data() as Map<String, dynamic>;
+        username = data['name'] ?? 'User';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Login successful"))
+      );
       
       // Navigate to home screen
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => HomeScreen(username: username)),
       );
+      
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? "Login failed")));
+      String errorMessage;
+      
+      switch (e.code) {
+        case 'user-not-found':
+          errorMessage = 'No user found with this email';
+          break;
+        case 'wrong-password':
+          errorMessage = 'Wrong password';
+          break;
+        case 'invalid-credential':
+          errorMessage = 'Invalid login credentials';
+          break;
+        case 'invalid-email':
+          errorMessage = 'Invalid email format';
+          break;
+        case 'user-disabled':
+          errorMessage = 'This account has been disabled';
+          break;
+        default:
+          errorMessage = 'Login failed: ${e.message}';
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage))
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Login failed: ${e.toString()}"))
+      );
     } finally {
       setState(() => isLoading = false);
     }
