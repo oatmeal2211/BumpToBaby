@@ -187,12 +187,12 @@ class AudioVisualLearningScreen extends StatelessWidget {
           'Audio/Visual Learning',
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.bold,
-            color: const Color(0xFF005792)
+            color: Colors.black,
           ),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFafdcf8),
         elevation: 2.0,
-        iconTheme: const IconThemeData(color: Color(0xFF005792)),
+        iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: ListView(
         children: [
