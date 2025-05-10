@@ -141,7 +141,7 @@ class PerspectiveApiService {
     }
   }
   
-  /// Simplified wrapper for confirmPostContent that returns just a boolean
+  /// Method used by community_screen.dart to confirm post content
   static Future<bool> confirmPostContent(BuildContext context, String content) async {
     final result = await processContent(context, content);
     return result.canPost;

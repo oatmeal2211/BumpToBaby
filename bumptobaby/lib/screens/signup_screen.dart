@@ -11,6 +11,8 @@ class SignUpScreen extends StatefulWidget {
 
 class _SignUpScreenState extends State<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   final TextEditingController nameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
@@ -119,6 +121,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         validator: (value) {
           if (value == null || value.isEmpty) return 'Please enter $hint';
           if (hint == 'Email' && !value.contains('@')) return 'Enter a valid email';
+          if (hint == 'Password' && value.length < 6) return 'Password must be at least 6 characters';
           return null;
         },
         decoration: InputDecoration(
@@ -139,35 +142,64 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
 
     setState(() => isLoading = true);
+    
     try {
-      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
-      );
-
-      final String name = nameController.text.trim();
-      
-      // Store user data in Firestore
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userCredential.user!.uid)
-          .set({
-            'name': name,
-            'phoneNumber': phoneController.text.trim(),
-            'email': emailController.text.trim(),
-            'profileImageUrl': '',
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-      
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Account created successfully")));
-      
-      // Navigate directly to home screen
-      Navigator.pushReplacement(
-        context, 
-        MaterialPageRoute(builder: (_) => HomeScreen(username: name))
-      );
+      // Step 1: Create the user with Firebase Authentication
+      try {
+        // Clear error handling for debugging
+        print("Creating user with email: ${emailController.text.trim()}");
+        
+        UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+          email: emailController.text.trim(),
+          password: passwordController.text.trim(),
+        );
+        
+        final User? user = userCredential.user;
+        if (user == null) {
+          throw Exception("Failed to create user: user is null");
+        }
+        
+        // Step 2: Store additional user data in Firestore
+        final String name = nameController.text.trim();
+        await _firestore.collection('users').doc(user.uid).set({
+          'name': name,
+          'phoneNumber': phoneController.text.trim(),
+          'email': emailController.text.trim(),
+          'profileImageUrl': '',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Account created successfully")));
+        
+        // Navigate directly to home screen
+        Navigator.pushReplacement(
+          context, 
+          MaterialPageRoute(builder: (_) => HomeScreen(username: name))
+        );
+      } catch (authError) {
+        print("Firebase Auth Error: $authError");
+        throw authError;
+      }
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Sign up failed')));
+      String message;
+      switch (e.code) {
+        case 'email-already-in-use':
+          message = 'This email is already registered';
+          break;
+        case 'invalid-email':
+          message = 'Please provide a valid email';
+          break;
+        case 'weak-password':
+          message = 'Password is too weak';
+          break;
+        default:
+          message = e.message ?? 'Sign up failed';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      print("Firebase Auth Exception: ${e.code} - ${e.message}");
+    } catch (e) {
+      print("General Error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}")));
     } finally {
       setState(() => isLoading = false);
     }
