@@ -17,6 +17,13 @@ class Recipe {
   final String servings;
   final Map<String, String> nutritionalValues;
   final String healthBenefitsSummary;
+  final String? priceRange;
+
+  // New fields for user's selected preferences
+  final String? selectedLifeStage;
+  final bool? wasVegetarian;
+  final bool? wasHalal;
+  final bool? wasBudgetFriendly;
 
   Recipe({
     required this.id,
@@ -29,6 +36,11 @@ class Recipe {
     required this.servings,
     required this.nutritionalValues,
     required this.healthBenefitsSummary,
+    this.priceRange,
+    this.selectedLifeStage,
+    this.wasVegetarian = false,
+    this.wasHalal = false,
+    this.wasBudgetFriendly = false,
   });
 
   factory Recipe.fromJson(Map<String, dynamic> json) {
@@ -43,6 +55,11 @@ class Recipe {
       servings: json['servings'] as String? ?? 'N/A',
       nutritionalValues: Map<String, String>.from(json['nutritionalValues'] as Map? ?? {}),
       healthBenefitsSummary: json['healthBenefitsSummary'] as String? ?? '',
+      priceRange: json['priceRange'] as String?,
+      selectedLifeStage: json['selectedLifeStage'] as String?,
+      wasVegetarian: json['wasVegetarian'] as bool? ?? false,
+      wasHalal: json['wasHalal'] as bool? ?? false,
+      wasBudgetFriendly: json['wasBudgetFriendly'] as bool? ?? false,
     );
   }
 
@@ -58,6 +75,11 @@ class Recipe {
       'servings': servings,
       'nutritionalValues': nutritionalValues,
       'healthBenefitsSummary': healthBenefitsSummary,
+      'priceRange': priceRange,
+      'selectedLifeStage': selectedLifeStage,
+      'wasVegetarian': wasVegetarian,
+      'wasHalal': wasHalal,
+      'wasBudgetFriendly': wasBudgetFriendly,
     };
   }
 }
@@ -130,21 +152,40 @@ class _RecipeDisplayScreenState extends State<RecipeDisplayScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Description first
             Text(widget.recipe.description, style: GoogleFonts.poppins(fontSize: 16, fontStyle: FontStyle.italic)),
+            const SizedBox(height: 12),
+            
+            // Capsules/Tags moved here (right after description)
+            _buildCapsuleTags(),
             const SizedBox(height: 10),
+            
+            // Then cuisine and servings
             Text('Cuisine: ${widget.recipe.cuisineType}', style: GoogleFonts.poppins(fontSize: 14)),
             Text('Servings: ${widget.recipe.servings}', style: GoogleFonts.poppins(fontSize: 14)),
+            
+            // Display price range if available
+            if (widget.recipe.priceRange != null && widget.recipe.priceRange!.isNotEmpty)
+              Text('Price Range: ${widget.recipe.priceRange}', 
+                 style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.green[700])),
+            
             if (widget.recipe.allergens.isNotEmpty)
               Text('Allergens: ${widget.recipe.allergens.join(", ")}', style: GoogleFonts.poppins(fontSize: 14, color: Colors.red)),
             
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
+            const Divider(thickness: 1), // Divider
+            const SizedBox(height: 15),
+
             _buildSectionHeader('Ingredients'),
             ...widget.recipe.ingredients.map((ing) => Padding(
               padding: const EdgeInsets.only(bottom: 4.0, left: 8.0),
               child: Text('• $ing', style: GoogleFonts.poppins(fontSize: 15)),
             )),
             
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
+            const Divider(thickness: 1), // Divider
+            const SizedBox(height: 15),
+
             _buildSectionHeader('Instructions'),
             ...widget.recipe.instructions.asMap().entries.map((entry) => Padding(
               padding: const EdgeInsets.only(bottom: 8.0, left: 8.0),
@@ -153,13 +194,14 @@ class _RecipeDisplayScreenState extends State<RecipeDisplayScreen> {
 
             if (widget.recipe.nutritionalValues.isNotEmpty) ...[
               const SizedBox(height: 20),
-              const Divider(),
+              const Divider(thickness: 1),
               const SizedBox(height: 10),
               _buildSectionHeader('Nutritional Information (Estimated)'),
               Card(
                 elevation: 2,
                 margin: const EdgeInsets.symmetric(vertical: 8.0),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                color: const Color(0xFFF8AFAF), // Changed background color
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: Column(
@@ -169,8 +211,8 @@ class _RecipeDisplayScreenState extends State<RecipeDisplayScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(entry.key, style: GoogleFonts.poppins(fontWeight: FontWeight.w500)),
-                          Text(entry.value, style: GoogleFonts.poppins()),
+                          Text(entry.key, style: GoogleFonts.poppins(fontWeight: FontWeight.w500, color: Colors.black87)),
+                          Text(entry.value, style: GoogleFonts.poppins(color: Colors.black87)),
                         ],
                       ),
                     )).toList(),
@@ -181,18 +223,19 @@ class _RecipeDisplayScreenState extends State<RecipeDisplayScreen> {
 
             if (widget.recipe.healthBenefitsSummary.isNotEmpty) ...[
               const SizedBox(height: 10),
-              const Divider(),
+              const Divider(thickness: 1),
               const SizedBox(height: 10),
               _buildSectionHeader('Health Benefits'),
               Card(
                 elevation: 2,
                 margin: const EdgeInsets.symmetric(vertical: 8.0),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                color: const Color(0xFFF8AFAF), // Changed background color
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: Text(
                     widget.recipe.healthBenefitsSummary,
-                    style: GoogleFonts.poppins(fontSize: 15, height: 1.5),
+                    style: GoogleFonts.poppins(fontSize: 15, height: 1.5, color: Colors.black87),
                   ),
                 ),
               ),
@@ -200,6 +243,53 @@ class _RecipeDisplayScreenState extends State<RecipeDisplayScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCapsuleTags() {
+    List<Widget> tags = [];
+
+    // Life Stage Tag
+    if (widget.recipe.selectedLifeStage != null && widget.recipe.selectedLifeStage!.isNotEmpty) {
+      tags.add(_buildTagChip(widget.recipe.selectedLifeStage!, Colors.blue[700]!));
+    }
+
+    // Dietary Preference Tags
+    if (widget.recipe.wasVegetarian == true) {
+      tags.add(_buildTagChip('Vegetarian', Colors.green[700]!));
+    }
+    if (widget.recipe.wasHalal == true) {
+      tags.add(_buildTagChip('Halal', Colors.teal[700]!));
+    }
+    if (widget.recipe.wasBudgetFriendly == true) {
+      tags.add(_buildTagChip('Budget-Friendly', Colors.orange[700]!));
+    }
+
+    // Fallback tag (optional)
+    if (tags.isEmpty && widget.recipe.healthBenefitsSummary.isNotEmpty) {
+        tags.add(_buildTagChip('Tailored Recipe', Colors.purple[700]!));
+    }
+
+    if (tags.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Wrap(
+        spacing: 8.0,
+        runSpacing: 4.0,
+        children: tags,
+      ),
+    );
+  }
+
+  Widget _buildTagChip(String label, Color color) {
+    return Chip(
+      label: Text(label, style: GoogleFonts.poppins(color: Colors.white, fontSize: 12)),
+      backgroundColor: color,
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 4.0), // Adjust padding
     );
   }
 
@@ -405,7 +495,6 @@ NutritionalValues should be a map of nutrient to value (e.g., "Calories": "350 k
       final responseText = response.text;
 
       if (responseText != null) {
-        // Attempt to clean the response text to ensure it's valid JSON
         String cleanedJson = responseText.trim();
         if (cleanedJson.startsWith("```json")) {
           cleanedJson = cleanedJson.substring(7);
@@ -421,11 +510,55 @@ NutritionalValues should be a map of nutrient to value (e.g., "Calories": "350 k
         print("Cleaned Gemini Response JSON: $cleanedJson"); // For debugging
 
         final recipeJson = jsonDecode(cleanedJson) as Map<String, dynamic>;
-        final recipe = Recipe.fromJson(recipeJson);
+        final aiRecipe = Recipe.fromJson(recipeJson);
+        
+        // Get price range if budget-friendly is selected
+        String? priceRange;
+        if (_isBudgetFriendly) {
+          try {
+            final pricePrompt = '''
+Based on the following recipe, please estimate its price range (low, medium, or high cost) and 
+provide an approximate cost range in Malaysian Ringgit (MYR) for the entire recipe. Consider standard grocery prices 
+in Malaysia. Make your response as concise as possible, providing just the estimated price 
+range (like "Low-cost: RM5-8 total").
+
+Recipe: ${aiRecipe.title}
+Ingredients: ${aiRecipe.ingredients.join(", ")}
+Cuisine: ${aiRecipe.cuisineType}
+Servings: ${aiRecipe.servings}
+''';
+            final priceResponse = await _geminiModel!.generateContent([Content.text(pricePrompt)]);
+            if (priceResponse.text != null) {
+              priceRange = priceResponse.text!.trim();
+            }
+          } catch (e) {
+            print('Error getting price range: $e');
+            // Continue without price range if there's an error
+          }
+        }
+        
+        // Then, create the final recipe object that includes user's selections
+        final finalRecipe = Recipe(
+          id: aiRecipe.id,
+          title: aiRecipe.title,
+          description: aiRecipe.description,
+          cuisineType: aiRecipe.cuisineType,
+          servings: aiRecipe.servings,
+          ingredients: aiRecipe.ingredients,
+          instructions: aiRecipe.instructions,
+          allergens: aiRecipe.allergens,
+          nutritionalValues: aiRecipe.nutritionalValues,
+          healthBenefitsSummary: aiRecipe.healthBenefitsSummary,
+          priceRange: priceRange,
+          selectedLifeStage: _selectedStage,
+          wasVegetarian: _isVegetarian,
+          wasHalal: _isHalal,
+          wasBudgetFriendly: _isBudgetFriendly
+        );
         
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => RecipeDisplayScreen(recipe: recipe)),
+          MaterialPageRoute(builder: (context) => RecipeDisplayScreen(recipe: finalRecipe)),
         );
 
       } else {
