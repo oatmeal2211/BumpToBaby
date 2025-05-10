@@ -35,8 +35,13 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
   final ImagePicker _imagePicker = ImagePicker();
   File? _selectedImage;
   
-  // Hardcoded response for image messages
-  final String _imageResponse = "Thank you for sharing the image. It appears that there is swelling in the leg. Swelling in the legs during pregnancy is quite common, especially in the later stages, due to increased fluid retention and pressure from the growing uterus. However, certain types of swelling may require medical attention.\n\nI recommend she be seen by a healthcare provider to ensure everything is progressing safely. It's always better to have a professional examine the condition directly to provide appropriate care and peace of mind.";
+  // Hardcoded response for image messages - now an array
+  final List<String> _imageResponses = [
+    "Thank you for sharing the image. It appears that there is swelling in the leg. Swelling in the legs during pregnancy is quite common, especially in the later stages, due to increased fluid retention and pressure from the growing uterus. However, certain types of swelling may require medical attention.\\n\\nI recommend she be seen by a healthcare provider to ensure everything is progressing safely. It's always better to have a professional examine the condition directly to provide appropriate care and peace of mind.",
+    "Thank you for sharing the image. The photo shows a visible rash on your abdomen. Mild skin changes and itchiness can be common during pregnancy due to stretching skin and hormonal changes.\\n\\nHowever, certain rashes—especially if they are widespread or very itchy—may require further evaluation. I recommend showing this to a healthcare provider to rule out any pregnancy-specific skin conditions such as PUPPP or other causes. They can help you find safe ways to relieve the discomfort.",
+    "Thank you for sharing the image. The dark vertical line on your belly, known as linea nigra, is a normal skin change that occurs during pregnancy due to hormonal shifts.\\n\\nIt's completely harmless and usually fades on its own after delivery. There's no need to worry, but feel free to ask if you notice any sudden changes or have concerns about your skin during pregnancy."
+  ];
+  int _imageResponseIndex = 0; // Counter for cycling through image responses
 
   final FlutterTts _flutterTts = FlutterTts();
 
@@ -173,11 +178,14 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
 
     // Add the hardcoded response for image
     if (mounted) { // Check if the widget is still in the tree
+      final String currentImageResponse = _imageResponses[_imageResponseIndex];
+      _imageResponseIndex = (_imageResponseIndex + 1) % _imageResponses.length; // Increment and loop
+
       setState(() {
         _messages.removeWhere((msg) => msg['isLoadingPlaceholder'] == true); // Remove loading indicator
         _messages.insert(0, {
           "isUser": false, 
-          "text": _imageResponse, 
+          "text": currentImageResponse, // Use the selected response
           "time": _getCurrentTime()
         });
         _isLoading = false;
@@ -235,6 +243,7 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
     if (mounted) {
         setState(() {
             _messages.clear();
+            _imageResponseIndex = 0; // Reset the image response counter
         });
         await _saveMessages(); // This will save an empty list
     }
