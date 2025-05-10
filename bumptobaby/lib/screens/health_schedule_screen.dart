@@ -1,4 +1,40 @@
-// ... existing code ...
+import 'package:bumptobaby/models/health_schedule.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+class HealthScheduleScreen extends StatefulWidget {
+  final HealthSchedule schedule;
+
+  const HealthScheduleScreen({Key? key, required this.schedule}) : super(key: key);
+
+  @override
+  State<HealthScheduleScreen> createState() => _HealthScheduleScreenState();
+}
+
+class _HealthScheduleScreenState extends State<HealthScheduleScreen> {
+  late List<HealthScheduleItem> _items;
+  
+  @override
+  void initState() {
+    super.initState();
+    _items = List.from(widget.schedule.items);
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Health Schedule'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          // You can add category sections here
+        ],
+      ),
+    );
+  }
+
   Widget _buildScheduleItem(HealthScheduleItem item) {
     final bool isPast = item.scheduledDate.isBefore(DateTime.now());
     final bool isToday = item.scheduledDate.day == DateTime.now().day &&
@@ -70,10 +106,28 @@
     );
   }
 
+  // Format date as a string
+  String _formatDate(DateTime date) {
+    return DateFormat('MMM d, yyyy').format(date);
+  }
+
+  // Toggle completion status of an item
+  void _toggleItemCompletion(HealthScheduleItem item) {
+    final int index = _items.indexWhere(
+      (i) => i.title == item.title && i.scheduledDate == item.scheduledDate
+    );
+    
+    if (index != -1) {
+      setState(() {
+        _items[index] = item.copyWith(isCompleted: !item.isCompleted);
+      });
+    }
+  }
+
   // Filter items by category
   List<HealthScheduleItem> _getItemsByCategory(String category) {
     final now = DateTime.now();
-    return widget.schedule.items
+    return _items
         .where((item) => 
             item.category == category && 
             (item.scheduledDate.isAfter(now) || 
@@ -82,6 +136,4 @@
               item.scheduledDate.day == now.day)))
         .toList();
   }
-
-  // Toggle completion status of an item
-// ... existing code ...
+}
