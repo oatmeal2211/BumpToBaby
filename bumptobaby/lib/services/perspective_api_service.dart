@@ -2,145 +2,272 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class PerspectiveApiService {
+  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static final FirebaseAuth _auth = FirebaseAuth.instance;
+
   // Access API key from .env file
   static String get apiKey => dotenv.env['PERSPECTIVE_API_KEY'] ?? '';
   static const String endpoint = 'https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze';
 
-  /// Analyze text content for toxicity and other attributes
-  /// Returns true if content passes moderation, false if it fails
-  static Future<ModeratedContent> moderateContent(String text) async {
+  // Threshold values for different attributes
+  static const double _severeThreshold = 0.85;
+  static const double _warnThreshold = 0.7;
+
+  /// Check content using Perspective API and generate toxicity scores
+  static Future<ContentRating> checkContent(String text) async {
     if (text.trim().isEmpty) {
-      return ModeratedContent(isAcceptable: true, scores: {});
+      return ContentRating(isHarmful: false, category: 'clean');
     }
 
     try {
-      final response = await http.post(
-        Uri.parse('$endpoint?key=$apiKey'),
-        headers: {
-          'Content-Type': 'application/json',
+      final url = '$endpoint?key=$apiKey';
+      
+      // Create the request body according to Perspective API specs
+      final requestBody = jsonEncode({
+        'comment': {'text': text},
+        'languages': ['en'],
+        'requestedAttributes': {
+          'TOXICITY': {},
+          'SEVERE_TOXICITY': {},
+          'IDENTITY_ATTACK': {},
+          'THREAT': {},
+          'PROFANITY': {},
+          'SEXUALLY_EXPLICIT': {},
         },
-        body: jsonEncode({
-          'comment': {
-            'text': text
-          },
-          'languages': ['en'],
-          'requestedAttributes': {
-            'TOXICITY': {},
-            'SEVERE_TOXICITY': {},
-            'IDENTITY_ATTACK': {},
-            'INSULT': {},
-            'PROFANITY': {},
-            'THREAT': {},
-            'SEXUALLY_EXPLICIT': {},
-          }
-        }),
+        'doNotStore': true
+      });
+
+      // Make the API request
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: requestBody,
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final attributeScores = data['attributeScores'];
+        final scores = data['attributeScores'];
         
-        // Extract scores for each attribute
-        Map<String, double> scores = {};
-        bool isAcceptable = true;
+        // Check for severe harmful content first (auto-block)
+        double severeToxicityScore = scores['SEVERE_TOXICITY']?['summaryScore']?['value'] ?? 0.0;
+        double threatScore = scores['THREAT']?['summaryScore']?['value'] ?? 0.0;
         
-        attributeScores.forEach((attribute, scoreData) {
-          final score = scoreData['summaryScore']['value'] as double;
-          scores[attribute] = score;
-          
-          // Apply threshold checks - you can adjust these thresholds as needed
-          if (attribute == 'TOXICITY' && score > 0.7 ||
-              attribute == 'SEVERE_TOXICITY' && score > 0.5 ||
-              attribute == 'IDENTITY_ATTACK' && score > 0.7 ||
-              attribute == 'INSULT' && score > 0.7 ||
-              attribute == 'PROFANITY' && score > 0.8 ||
-              attribute == 'THREAT' && score > 0.5 ||
-              attribute == 'SEXUALLY_EXPLICIT' && score > 0.7) {
-            isAcceptable = false;
-          }
-        });
+        if (severeToxicityScore >= _severeThreshold) {
+          return ContentRating(
+            isHarmful: true,
+            category: 'severe_toxicity',
+            severity: severeToxicityScore,
+            autoBlock: true,
+          );
+        }
         
-        return ModeratedContent(
-          isAcceptable: isAcceptable,
-          scores: scores,
-        );
+        if (threatScore >= _severeThreshold) {
+          return ContentRating(
+            isHarmful: true,
+            category: 'threat',
+            severity: threatScore,
+            autoBlock: true,
+          );
+        }
+        
+        // Check other attributes
+        double toxicityScore = scores['TOXICITY']?['summaryScore']?['value'] ?? 0.0;
+        double identityAttackScore = scores['IDENTITY_ATTACK']?['summaryScore']?['value'] ?? 0.0;
+        double profanityScore = scores['PROFANITY']?['summaryScore']?['value'] ?? 0.0;
+        double sexualScore = scores['SEXUALLY_EXPLICIT']?['summaryScore']?['value'] ?? 0.0;
+        
+        // Find the highest scoring harmful attribute
+        final attributes = [
+          {'name': 'toxicity', 'score': toxicityScore},
+          {'name': 'identity_attack', 'score': identityAttackScore},
+          {'name': 'profanity', 'score': profanityScore},
+          {'name': 'sexually_explicit', 'score': sexualScore},
+        ];
+        
+        attributes.sort((a, b) => (b['score'] as double).compareTo(a['score'] as double));
+        
+        if ((attributes[0]['score'] as double) >= _warnThreshold) {
+          return ContentRating(
+            isHarmful: true,
+            category: attributes[0]['name'] as String,
+            severity: attributes[0]['score'] as double,
+          );
+        }
+        
+        // Content is clean
+        return ContentRating(isHarmful: false, category: 'clean');
       } else {
-        print('Perspective API error: ${response.statusCode} - ${response.body}');
-        // On API error, we'll allow the content (you might want to handle this differently)
-        return ModeratedContent(isAcceptable: true, scores: {});
+        print('Perspective API error: ${response.statusCode}, ${response.body}');
+        // Fall back to clean if API fails
+        return ContentRating(isHarmful: false, category: 'clean');
       }
     } catch (e) {
       print('Error calling Perspective API: $e');
-      // On error, we'll allow the content (you might want to handle this differently)
-      return ModeratedContent(isAcceptable: true, scores: {});
+      // Fall back to clean if an exception occurs
+      return ContentRating(isHarmful: false, category: 'clean');
+    }
+  }
+
+  /// Process content with warning dialog if needed
+  static Future<ContentProcessResult> processContent(BuildContext context, String content) async {
+    final rating = await checkContent(content);
+    print('Content check result: ${rating.category}, severity: ${rating.severity}, autoBlock: ${rating.autoBlock}');
+    
+    // Clean content - allow immediately
+    if (!rating.isHarmful) {
+      return ContentProcessResult(canPost: true, userOverrode: false);
+    }
+    
+    // Auto-block content that violates strict policies
+    if (rating.autoBlock) {
+      _storeHarmfulContent(content, rating, 'blocked');
+      _showAutomaticBlockMessage(context);
+      return ContentProcessResult(canPost: false, userOverrode: false);
+    }
+    
+    // Show warning for other harmful content
+    final shouldPost = await _showWarningDialog(context, rating);
+    if (shouldPost) {
+      // User chose to post anyway - record but allow
+      _storeHarmfulContent(content, rating, 'warned_allowed');
+      return ContentProcessResult(canPost: true, userOverrode: true);
+    } else {
+      // User chose to edit their content
+      return ContentProcessResult(canPost: false, userOverrode: false);
     }
   }
   
-  // Display a warning dialog for potentially problematic content
+  /// Simplified wrapper for confirmPostContent that returns just a boolean
   static Future<bool> confirmPostContent(BuildContext context, String content) async {
-    final result = await moderateContent(content);
-    
-    if (!result.isAcceptable) {
-      // Show warning dialog
-      return await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Content Warning'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Our system detected potentially inappropriate content. Please review before posting:'),
-              SizedBox(height: 12),
-              Text('- ${_getIssueDescription(result.scores)}'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text('Edit'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              onPressed: () => Navigator.pop(context, true),
-              child: Text('Post Anyway'),
-            ),
+    final result = await processContent(context, content);
+    return result.canPost;
+  }
+  
+  // Store harmful content in Firestore for review
+  static Future<void> _storeHarmfulContent(
+    String content, 
+    ContentRating rating,
+    String action
+  ) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+      
+      await _firestore.collection('harmful_content').add({
+        'userId': user.uid,
+        'content': content,
+        'category': rating.category,
+        'severity': rating.severity,
+        'action': action,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      
+      print('Stored harmful content in Firestore');
+    } catch (e) {
+      print('Error storing harmful content: $e');
+    }
+  }
+
+  // Show warning dialog for harmful content
+  static Future<bool> _showWarningDialog(BuildContext context, ContentRating rating) async {
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text('Content Warning'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Our system detected potentially inappropriate content:'),
+            SizedBox(height: 12),
+            Text('- ${_getWarningMessage(rating.category)}', 
+              style: TextStyle(fontWeight: FontWeight.bold)),
+            SizedBox(height: 12),
+            Text('Please consider editing your message before posting.'),
           ],
         ),
-      ) ?? false;
-    }
-    
-    return true; // Content is acceptable
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Edit Content'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Post Anyway'),
+          ),
+        ],
+      ),
+    ) ?? false;
   }
-  
-  // Helper method to provide human-readable issue description
-  static String _getIssueDescription(Map<String, double> scores) {
-    if (scores.containsKey('TOXICITY') && scores['TOXICITY']! > 0.7) {
-      return 'This content may be perceived as toxic or negative';
-    } else if (scores.containsKey('IDENTITY_ATTACK') && scores['IDENTITY_ATTACK']! > 0.7) {
-      return 'This content may contain identity-based attacks';
-    } else if (scores.containsKey('INSULT') && scores['INSULT']! > 0.7) {
-      return 'This content may contain insults';
-    } else if (scores.containsKey('PROFANITY') && scores['PROFANITY']! > 0.8) {
-      return 'This content contains profanity';
-    } else if (scores.containsKey('THREAT') && scores['THREAT']! > 0.5) {
-      return 'This content may contain threatening language';
-    } else if (scores.containsKey('SEXUALLY_EXPLICIT') && scores['SEXUALLY_EXPLICIT']! > 0.7) {
-      return 'This content may contain sexually explicit language';
-    } else {
-      return 'This content may violate community guidelines';
+
+  // Show automatic block message for severe violations
+  static void _showAutomaticBlockMessage(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'This content violates community guidelines and cannot be posted.',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
+  // Get human-readable warning message
+  static String _getWarningMessage(String category) {
+    switch (category) {
+      case 'toxicity':
+        return 'This content may contain toxic language';
+      case 'severe_toxicity':
+        return 'This content contains language that violates our community guidelines';
+      case 'identity_attack':
+        return 'This content may contain identity-based attacks';
+      case 'threat':
+        return 'This content may contain threatening language';
+      case 'profanity':
+        return 'This content contains profanity';
+      case 'sexually_explicit':
+        return 'This content may contain sexually explicit language';
+      default:
+        return 'This content may violate community guidelines';
     }
   }
 }
 
-class ModeratedContent {
-  final bool isAcceptable;
-  final Map<String, double> scores;
+/// Simple class to represent content rating
+class ContentRating {
+  final bool isHarmful;
+  final String category; 
+  final double severity;
+  final bool autoBlock;
   
-  ModeratedContent({
-    required this.isAcceptable,
-    required this.scores,
+  ContentRating({
+    required this.isHarmful,
+    required this.category,
+    this.severity = 0.0,
+    this.autoBlock = false,
+  });
+}
+
+/// Result of content processing
+class ContentProcessResult {
+  final bool canPost;
+  final bool userOverrode;
+  
+  ContentProcessResult({
+    required this.canPost,
+    required this.userOverrode,
   });
 } 
