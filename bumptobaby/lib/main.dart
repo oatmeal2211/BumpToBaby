@@ -8,6 +8,7 @@ import 'firebase_options.dart';
 import 'package:bumptobaby/screens/signup_screen.dart';
 import 'package:bumptobaby/screens/login_screen.dart';
 import 'package:bumptobaby/screens/home_screen.dart';
+import 'package:bumptobaby/screens/family_planning_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,6 +67,7 @@ class _MyAppState extends State<MyApp> {
         '/login': (context) => LoginScreen(),
         '/signup': (context) => SignUpScreen(),
         '/home': (context) => HomeScreen(username: 'User'),
+        '/family_planning': (context) => FamilyPlanningScreen(),
       },
     );
   }
