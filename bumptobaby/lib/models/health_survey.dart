@@ -52,9 +52,15 @@ class HealthSurvey {
       babyGender: json['babyGender'],
       babyWeight: json['babyWeight'],
       babyHeight: json['babyHeight'],
-      healthConditions: json['healthConditions'] != null ? List<String>.from(json['healthConditions']) : null,
-      allergies: json['allergies'] != null ? List<String>.from(json['allergies']) : null,
-      medications: json['medications'] != null ? List<String>.from(json['medications']) : null,
+      healthConditions: json['healthConditions'] != null
+          ? List<String>.from(json['healthConditions'])
+          : null,
+      allergies: json['allergies'] != null
+          ? List<String>.from(json['allergies'])
+          : null,
+      medications: json['medications'] != null
+          ? List<String>.from(json['medications'])
+          : null,
       createdAt: DateTime.parse(json['createdAt']),
     );
   }
