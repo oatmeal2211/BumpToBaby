@@ -1,87 +1,4 @@
-import 'package:flutter/material.dart';
-import 'package:bumptobaby/models/health_schedule.dart';
-import 'package:bumptobaby/services/health_schedule_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart';
-
-class HealthScheduleScreen extends StatefulWidget {
-  final HealthSchedule schedule;
-
-  const HealthScheduleScreen({Key? key, required this.schedule}) : super(key: key);
-
-  @override
-  _HealthScheduleScreenState createState() => _HealthScheduleScreenState();
-}
-
-class _HealthScheduleScreenState extends State<HealthScheduleScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  final HealthScheduleService _healthScheduleService = HealthScheduleService();
-  bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  // Filter items by category
-  List<HealthScheduleItem> _getItemsByCategory(String category) {
-    return widget.schedule.items
-        .where((item) => item.category == category)
-        .toList();
-  }
-
-  // Toggle completion status of an item
-  Future<void> _toggleItemCompletion(HealthScheduleItem item) async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You must be logged in to update items')),
-        );
-        return;
-      }
-
-      final updatedItem = item.copyWith(isCompleted: !item.isCompleted);
-      await _healthScheduleService.updateScheduleItem(user.uid, updatedItem);
-
-      // Update the local state
-      setState(() {
-        final index = widget.schedule.items.indexWhere((i) =>
-            i.title == item.title &&
-            i.scheduledDate.isAtSameMomentAs(item.scheduledDate) &&
-            i.category == item.category);
-        if (index != -1) {
-          widget.schedule.items[index] = updatedItem;
-        }
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating item: ${e.toString()}')),
-      );
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  // Format date for display
-  String _formatDate(DateTime date) {
-    return DateFormat('MMM d, yyyy').format(date);
-  }
-
-  // Build a list item for a schedule item
+// ... existing code ...
   Widget _buildScheduleItem(HealthScheduleItem item) {
     final bool isPast = item.scheduledDate.isBefore(DateTime.now());
     final bool isToday = item.scheduledDate.day == DateTime.now().day &&
@@ -91,8 +8,6 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
     Color statusColor;
     if (item.isCompleted) {
       statusColor = Colors.green;
-    } else if (isPast) {
-      statusColor = Colors.red;
     } else if (isToday) {
       statusColor = Colors.orange;
     } else {
@@ -102,8 +17,6 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
     String statusText;
     if (item.isCompleted) {
       statusText = 'Completed';
-    } else if (isPast) {
-      statusText = 'Missed';
     } else if (isToday) {
       statusText = 'Today';
     } else {
@@ -157,83 +70,18 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
     );
   }
 
-  // Build a tab for a category
-  Widget _buildCategoryTab(String category) {
-    final items = _getItemsByCategory(category);
-    
-    if (items.isEmpty) {
-      return const Center(
-        child: Text(
-          'No items in this category',
-          style: TextStyle(fontSize: 16.0, color: Colors.grey),
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(8.0),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        return _buildScheduleItem(items[index]);
-      },
-    );
+  // Filter items by category
+  List<HealthScheduleItem> _getItemsByCategory(String category) {
+    final now = DateTime.now();
+    return widget.schedule.items
+        .where((item) => 
+            item.category == category && 
+            (item.scheduledDate.isAfter(now) || 
+             (item.scheduledDate.year == now.year && 
+              item.scheduledDate.month == now.month && 
+              item.scheduledDate.day == now.day)))
+        .toList();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Health Schedule', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF005792))),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          labelColor: Colors.pink[400],
-          unselectedLabelColor: Colors.grey[600],
-          indicatorColor: Colors.pink[400],
-          tabs: const [
-            Tab(text: 'Check-ups'),
-            Tab(text: 'Vaccines'),
-            Tab(text: 'Milestones'),
-            Tab(text: 'Supplements'),
-          ],
-        ),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    'Generated on ${_formatDate(widget.schedule.generatedAt)}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14.0),
-                  ),
-                ),
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildCategoryTab('checkup'),
-                      _buildCategoryTab('vaccine'),
-                      _buildCategoryTab('milestone'),
-                      _buildCategoryTab('supplement'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // Navigate back to the survey screen
-          Navigator.pop(context);
-          // The survey screen will be pushed from the main navigation
-        },
-        backgroundColor: Colors.pink[400],
-        child: const Icon(Icons.refresh),
-        tooltip: 'Take survey again',
-      ),
-    );
-  }
-} 
+  // Toggle completion status of an item
+// ... existing code ...
