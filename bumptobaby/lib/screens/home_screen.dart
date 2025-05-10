@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:bumptobaby/screens/health_schedule_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bumptobaby/services/health_schedule_service.dart';
+import 'package:bumptobaby/models/health_schedule.dart';
 
 // Import all the screens we need
 import 'package:bumptobaby/screens/nearest_clinic_screen.dart';
@@ -28,10 +30,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final HealthScheduleService _healthScheduleService = HealthScheduleService();
   
   String _username = '';
   String _profileImageUrl = '';
   int _currentIndex = 0;
+  bool _isLoadingSchedule = false;
+  HealthSchedule? _healthSchedule;
   
   @override
   void initState() {
@@ -62,13 +67,49 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
   
+  // Method to fetch health schedule from Firebase
+  Future<void> _fetchHealthSchedule() async {
+    setState(() {
+      _isLoadingSchedule = true;
+    });
+    
+    try {
+      User? currentUser = _auth.currentUser;
+      if (currentUser != null) {
+        final schedule = await _healthScheduleService.getLatestHealthSchedule(currentUser.uid);
+        setState(() {
+          _healthSchedule = schedule;
+          _isLoadingSchedule = false;
+        });
+      } else {
+        setState(() {
+          _isLoadingSchedule = false;
+        });
+      }
+    } catch (e) {
+      print('Error fetching health schedule: $e');
+      setState(() {
+        _isLoadingSchedule = false;
+      });
+    }
+  }
+  
   // Method to build the current page based on bottom nav selection
   Widget _buildCurrentPage() {
     switch (_currentIndex) {
       case 0:
         return _buildHomePage();
       case 1:
-        return HealthSurveyScreen(); // My Schedule page
+        // My Schedule page - fetch schedule if needed
+        if (_isLoadingSchedule) {
+          return Center(child: CircularProgressIndicator());
+        } else if (_healthSchedule != null) {
+          return HealthScheduleScreen(schedule: _healthSchedule!);
+        } else {
+          // Fetch schedule when this tab is selected
+          _fetchHealthSchedule();
+          return HealthSurveyScreen();
+        }
       case 2:
         return Center(child: Text('Baby Tracker Coming Soon')); // Baby Tracker
       case 3:

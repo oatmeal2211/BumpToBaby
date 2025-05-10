@@ -42,19 +42,42 @@ User Status: ${survey.isPregnant ? 'Pregnant' : 'New Parent'}
       prompt += "Due Date: ${survey.dueDate!.toIso8601String()}\n";
       prompt += "Current Pregnancy Week: $pregnancyWeeks\n";
       prompt += """
-Generate a detailed pregnancy health schedule covering:
+Generate a detailed pregnancy health schedule covering these 4 key sections:
 
-✅ Check-ups → Schedule appointments from now until the due date, adjusting frequency (weekly or biweekly as due date approaches).
-✅ Milestones → Include fetal movement tracking, growth updates, countdowns, hospital bag prep, birth plan finalization, etc.
-✅ Vaccines → Include all recommended vaccines (e.g., Tdap, flu shot if in season).
-✅ Supplements → Limit to ~5 key supplements (e.g., prenatal vitamins, folic acid, iron, calcium, DHA) and clearly mention they are DAILY reminders.
+1️⃣ Check-up Schedule:
+   - Regular prenatal visits (adjust frequency as due date approaches)
+   - Ultrasounds and screenings
+   - Blood tests and monitoring
+   - Mental health check-ins
+
+2️⃣ Vaccine Schedule:
+   - Flu shot (if in season)
+   - Tdap vaccine (whooping cough)
+   - COVID vaccine or booster (if recommended)
+   - Any other pregnancy-specific vaccines
+
+3️⃣ Milestones:
+   - Fetal movement tracking/kick counts
+   - Trimester transitions
+   - Glucose screening
+   - Hospital bag preparation
+   - Birth plan creation
+   - Childbirth classes
+   - Nursery setup
+
+4️⃣ Supplements:
+   - Prenatal vitamins
+   - Folic acid
+   - Iron
+   - Calcium
+   - DHA/Omega-3
 
 Example JSON format:
 {
   "items": [
     {
       "title": "32-Week Checkup",
-      "description": "Monitor fetal growth, position, and mother’s health.",
+      "description": "Monitor fetal growth, position, and mother's health.",
       "scheduledDate": "2025-06-01",
       "category": "checkup"
     },
@@ -87,11 +110,29 @@ IMPORTANT:
       if (survey.babyHeight != null) prompt += "Baby's Height: ${survey.babyHeight} cm\n";
 
       prompt += """
-Generate a detailed infant health schedule covering:
-✅ Check-ups → Pediatric appointments and growth monitoring.
-✅ Milestones → Physical, cognitive, motor, and feeding milestones.
-✅ Vaccines → All recommended vaccines for the first year.
-✅ Supplements → Only necessary supplements, ~5 items (like vitamin D), mention daily if required.
+Generate a detailed infant health schedule covering these 4 key sections:
+
+1️⃣ Check-up Schedule:
+   - Regular pediatric visits
+   - Growth assessments
+   - Developmental screenings
+   - Vision and hearing checks
+
+2️⃣ Vaccine Schedule:
+   - Standard newborn/infant immunizations (HepB, DTaP, Hib, PCV, IPV, RV, etc.)
+   - Seasonal vaccines (like flu)
+   - Follow the standard CDC/WHO immunization schedule
+
+3️⃣ Milestones:
+   - Physical milestones (tummy time, rolling over, sitting, crawling, walking)
+   - Cognitive milestones (tracking objects, recognizing faces, first words)
+   - Feeding milestones (introducing solids, self-feeding)
+   - Social milestones (smiling, laughing, playing)
+
+4️⃣ Supplements:
+   - Vitamin D drops
+   - Iron drops (if needed)
+   - Any other supplements based on baby's needs
 
 Use same JSON format as above.
 """;
