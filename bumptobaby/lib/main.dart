@@ -6,6 +6,8 @@ import 'firebase_options.dart';
 import 'package:bumptobaby/screens/signup_screen.dart';
 import 'package:bumptobaby/screens/login_screen.dart';
 import 'package:bumptobaby/screens/home_screen.dart';
+import 'package:bumptobaby/screens/health_survey_screen.dart';
+import 'package:bumptobaby/screens/health_help_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
