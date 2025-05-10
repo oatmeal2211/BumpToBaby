@@ -27,7 +27,8 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
   
   // UI state
   bool _isLoading = true;
-  bool _isInitialSetup = true;
+  bool _isFirstEntry = true;  // Track if this is the first time user opens the screen
+  bool _hasLoggedPeriod = false;  // Track if user has logged any period data
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
   bool _isSaving = false;
@@ -55,13 +56,19 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
       
       if (data != null) {
         setState(() {
-          _isInitialSetup = false;
+          _isFirstEntry = false;  // User has data, not first entry
           _planningGoal = data.planningGoal;
           _lastPeriodDate = data.lastPeriodDate;
           _cycleDuration = data.cycleDuration;
           _periodDates = data.periodDates;
           _pillTakenDates = data.pillTakenDates;
           _injectionDates = data.injectionDates;
+          _hasLoggedPeriod = data.periodDates.isNotEmpty;  // Check if user has logged any periods
+        });
+      } else {
+        // No data found, this is first entry
+        setState(() {
+          _isFirstEntry = true;
         });
       }
     } catch (e) {
@@ -91,7 +98,7 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
     });
     
     try {
-      if (_isInitialSetup) {
+      if (_isFirstEntry) {
         // Create new data
         final data = FamilyPlanningData(
           userId: _planningService.currentUserId ?? 'anonymous',
@@ -102,7 +109,7 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
         await _planningService.saveFamilyPlanningData(data);
         if (mounted) {
           setState(() {
-            _isInitialSetup = false;
+            _isFirstEntry = false;
           });
         }
       } else {
@@ -149,6 +156,7 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
           d.day == date.day
         )) {
           _periodDates = [..._periodDates, date];
+          _hasLoggedPeriod = true;  // User has now logged a period
         }
       });
       
@@ -723,7 +731,7 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
           ElevatedButton(
             onPressed: () {
               setState(() {
-                _isInitialSetup = false;
+                _isFirstEntry = false;
               });
             },
             style: ElevatedButton.styleFrom(
@@ -1355,8 +1363,8 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
   }
   
   Widget _buildFertileDaysTab() {
-    final fertileDays = _planningService.calculateFertileDays(_lastPeriodDate, _cycleDuration);
-    final nextPeriods = _planningService.predictNextPeriods(_lastPeriodDate, _cycleDuration);
+    final fertileDays = _hasLoggedPeriod ? _planningService.calculateFertileDays(_lastPeriodDate, _cycleDuration) : <DateTime>[];
+    final nextPeriods = _hasLoggedPeriod ? _planningService.predictNextPeriods(_lastPeriodDate, _cycleDuration) : <DateTime>[];
     
     return Padding(
       padding: EdgeInsets.all(16),
@@ -1370,16 +1378,19 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
             ),
           ),
           SizedBox(height: 8),
-          TrackingSummary(
-            lastPeriod: _lastPeriodDate,
-            fertileDays: fertileDays,
-            nextPeriod: nextPeriods.isNotEmpty ? nextPeriods.first : null,
-            pillsTaken: _pillTakenDates.where((date) => 
-              date.month == DateTime.now().month && 
-              date.year == DateTime.now().year
-            ).length,
-            lastInjection: _injectionDates.isNotEmpty ? _injectionDates.last : null,
-          ),
+          if (_hasLoggedPeriod) 
+            TrackingSummary(
+              lastPeriod: _lastPeriodDate,
+              fertileDays: fertileDays,
+              nextPeriod: nextPeriods.isNotEmpty ? nextPeriods.first : null,
+              pillsTaken: _pillTakenDates.where((date) => 
+                date.month == DateTime.now().month && 
+                date.year == DateTime.now().year
+              ).length,
+              lastInjection: _injectionDates.isNotEmpty ? _injectionDates.last : null,
+            )
+          else
+            _buildNoPeriodDataCard(),
           SizedBox(height: 16),
           Text(
             'Calendar',
@@ -1426,7 +1437,7 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
               calendarBuilders: CalendarBuilders(
                 defaultBuilder: (context, day, focusedDay) {
                   bool isPeriod = _isPeriodDay(day);
-                  bool isFertile = _isFertileDay(day);
+                  bool isFertile = _hasLoggedPeriod && _isFertileDay(day);  // Only check fertile days if period data exists
                   bool isPill = _isPillTakenDay(day);
                   bool isInjection = _isInjectionDay(day);
                   
@@ -1507,7 +1518,7 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
                 },
                 selectedBuilder: (context, day, focusedDay) {
                   bool isPeriod = _isPeriodDay(day);
-                  bool isFertile = _isFertileDay(day);
+                  bool isFertile = _hasLoggedPeriod && _isFertileDay(day);
                   bool isPill = _isPillTakenDay(day);
                   bool isInjection = _isInjectionDay(day);
                   
@@ -1609,7 +1620,7 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
                 },
                 todayBuilder: (context, day, focusedDay) {
                   bool isPeriod = _isPeriodDay(day);
-                  bool isFertile = _isFertileDay(day);
+                  bool isFertile = _hasLoggedPeriod && _isFertileDay(day);
                   bool isPill = _isPillTakenDay(day);
                   bool isInjection = _isInjectionDay(day);
                   
@@ -1755,7 +1766,8 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
                   children: [
                     _buildEnhancedLegendItem(Colors.red, 'Period', Icons.circle),
                     SizedBox(width: 16),
-                    _buildEnhancedLegendItem(Colors.green, 'Fertile', Icons.circle),
+                    if (_hasLoggedPeriod)
+                      _buildEnhancedLegendItem(Colors.green, 'Fertile', Icons.circle),
                   ],
                 ),
                 SizedBox(height: 8),
@@ -1775,6 +1787,62 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
             _buildFertilityExplanationCard(),
           ],
         ],
+      ),
+    );
+  }
+  
+  // New widget to show when no period data is available
+  Widget _buildNoPeriodDataCard() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.blue, size: 24),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'No Period Data Yet',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Log your period dates to get predictions for your next period and fertile window.',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[800],
+              ),
+            ),
+            SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                _showDayActionSheet(DateTime.now());
+              },
+              icon: Icon(Icons.calendar_today),
+              label: Text('Record Period'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFFF8AFAF),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2120,7 +2188,7 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
       );
     }
     
-    if (_isInitialSetup) {
+    if (_isFirstEntry) {
       return Scaffold(
         appBar: AppBar(
           title: Text(
