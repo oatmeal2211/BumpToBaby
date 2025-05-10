@@ -22,6 +22,33 @@ class HealthScheduleService {
     }
   }
 
+  // Get latest health survey for a user
+  Future<HealthSurvey?> getLatestHealthSurvey(String userId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('health_surveys')
+          .doc(userId)
+          .collection('surveys')
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+          
+      if (querySnapshot.docs.isEmpty) {
+        return null;
+      }
+      
+      final doc = querySnapshot.docs.first;
+      final data = doc.data();
+      
+      return HealthSurvey.fromJson(data);
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error getting health survey: $e");
+      }
+      throw Exception("Failed to get health survey: $e");
+    }
+  }
+
   // Save health schedule to Firestore
   Future<void> saveHealthSchedule(HealthSchedule schedule) async {
     try {
