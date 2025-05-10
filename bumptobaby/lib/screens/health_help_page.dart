@@ -692,12 +692,18 @@ Adakah anda ingin membuka pautan ini?
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: DropdownButton<String>(
                       value: _selectedLanguage,
-                      icon: const Icon(Icons.language, size: 18),
+                      icon: const Icon(Icons.arrow_drop_down, size: 18),
                       underline: Container(), // Remove the default underline
                       items: _languages.map((String language) {
                         return DropdownMenuItem<String>(
                           value: language,
-                          child: Text(language, style: const TextStyle(fontSize: 14)),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.language, size: 18), // Language icon
+                              const SizedBox(width: 8), // Space between icon and text
+                              Text(language, style: const TextStyle(fontSize: 14)),
+                            ],
+                          ),
                         );
                       }).toList(),
                       onChanged: (String? newValue) {
@@ -725,7 +731,7 @@ Adakah anda ingin membuka pautan ini?
                 ],
               ),
         backgroundColor: Colors.white,
-        elevation: 2, // Add some elevation for a shadow effect
+        // elevation: 2, // Add some elevation for a shadow effect
         centerTitle: false,
         actions: [
           IconButton(
