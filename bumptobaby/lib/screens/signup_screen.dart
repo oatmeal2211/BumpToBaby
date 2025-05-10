@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'login_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bumptobaby/screens/home_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   @override
@@ -138,13 +140,32 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     setState(() => isLoading = true);
     try {
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
-      // Show success or navigate to login/home
+
+      final String name = nameController.text.trim();
+      
+      // Store user data in Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .set({
+            'name': name,
+            'phoneNumber': phoneController.text.trim(),
+            'email': emailController.text.trim(),
+            'profileImageUrl': '',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+      
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Account created successfully")));
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen()));
+      
+      // Navigate directly to home screen
+      Navigator.pushReplacement(
+        context, 
+        MaterialPageRoute(builder: (_) => HomeScreen(username: name))
+      );
     } on FirebaseAuthException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Sign up failed')));
     } finally {
