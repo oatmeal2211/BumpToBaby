@@ -24,6 +24,10 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
 
   // Placeholder for chat messages - now initially empty
   final List<Map<String, dynamic>> _messages = [];
+  // For search functionality
+  List<Map<String, dynamic>> _filteredMessages = [];
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
 
   // Variable for prompt engineering - you can set your base prompt here
   String _systemPrompt = "You are a helpful and empathetic AI assistant for pregnant mothers. Your name is BumpToBaby AI but no need to mention it in the response unless the user asks who you are. Provide support and information related to pregnancy. Try not to repeat the responses given provided based on the chat history. Explain those professional medical terms in a way that is easy to understand like pregnanct women is on her first pregnancy. Keep responses conscise and brief. Use markdown for better view formatting. Be more casual and conversational.";
@@ -38,12 +42,14 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
   // Hardcoded response for image messages - now an array
   final List<String> _imageResponses = [
     "Thank you for sharing the image. It appears that there is swelling in the leg. Swelling in the legs during pregnancy is quite common, especially in the later stages, due to increased fluid retention and pressure from the growing uterus. However, certain types of swelling may require medical attention.\\n\\nI recommend she be seen by a healthcare provider to ensure everything is progressing safely. It's always better to have a professional examine the condition directly to provide appropriate care and peace of mind.",
-    "Thank you for sharing the image. The photo shows a visible rash on your abdomen. Mild skin changes and itchiness can be common during pregnancy due to stretching skin and hormonal changes.\\n\\nHowever, certain rashes—especially if they are widespread or very itchy—may require further evaluation. I recommend showing this to a healthcare provider to rule out any pregnancy-specific skin conditions such as PUPPP or other causes. They can help you find safe ways to relieve the discomfort.",
-    "Thank you for sharing the image. The dark vertical line on your belly, known as linea nigra, is a normal skin change that occurs during pregnancy due to hormonal shifts.\\n\\nIt's completely harmless and usually fades on its own after delivery. There's no need to worry, but feel free to ask if you notice any sudden changes or have concerns about your skin during pregnancy."
+    "Thank you for sharing the image. The photo shows a visible rash on your abdomen. Mild skin changes and itchiness can be common during pregnancy due to stretching skin and hormonal changes. However, certain rashes—especially if they are widespread or very itchy—may require further evaluation. I recommend showing this to a healthcare provider to rule out any pregnancy-specific skin conditions such as PUPPP or other causes. They can help you find safe ways to relieve the discomfort.",
+    "Thank you for sharing the image. The dark vertical line on your belly, known as linea nigra, is a normal skin change that occurs during pregnancy due to hormonal shifts. It's completely harmless and usually fades on its own after delivery. There's no need to worry, but feel free to ask if you notice any sudden changes or have concerns about your skin during pregnancy."
   ];
   int _imageResponseIndex = 0; // Counter for cycling through image responses
 
   final FlutterTts _flutterTts = FlutterTts();
+  bool _isSpeaking = false; // Track if TTS is currently active
+  String? _currentlyPlayingMessageId; // Track which message is being read
 
   @override
   void initState() {
@@ -55,6 +61,25 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
       }
     }
     _loadMessages(); // Load messages when the widget initializes
+    
+    // Set up TTS completion listener
+    _flutterTts.setCompletionHandler(() {
+      if (mounted) {
+        setState(() {
+          _isSpeaking = false;
+          _currentlyPlayingMessageId = null;
+        });
+      }
+    });
+    
+    // Initialize filtered messages with all messages
+    _filteredMessages = List.from(_messages);
+  }
+
+  @override
+  void dispose() {
+    _flutterTts.stop();
+    super.dispose();
   }
 
   Future<void> _loadMessages() async {
@@ -63,20 +88,23 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
     if (messagesJson != null) {
       try {
         final List<dynamic> decodedMessages = jsonDecode(messagesJson);
-        // Ensure messages are loaded in the correct order if they were saved in display order
-        // Since we insert at 0 for display, they are likely already in reverse chronological order in storage.
-        // If not, you might need to reverse them here or save them in chronological order.
         if (mounted) { // Check if the widget is still in the tree
             setState(() {
                 _messages.addAll(decodedMessages.map((item) => Map<String, dynamic>.from(item as Map)).toList());
+                _filteredMessages = List.from(_messages); // Update filtered messages here
             });
         }
       } catch (e) {
         if (kDebugMode) {
           print("Error loading messages: $e");
         }
-        // Optionally clear corrupted data
-        // await prefs.remove('chat_messages');
+      }
+    } else {
+      // If there are no saved messages, ensure filteredMessages is also empty or initialized appropriately
+      if (mounted) {
+        setState(() {
+          _filteredMessages = List.from(_messages); // Should be empty if _messages is empty
+        });
       }
     }
   }
@@ -309,21 +337,89 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
     }
   }
 
-  Future<void> _speak(String text) async {
-    await _flutterTts.stop(); // Stop any ongoing speech
+  Future<void> _speak(String text, String messageId) async {
+    // If already speaking this message, stop it
+    if (_isSpeaking && _currentlyPlayingMessageId == messageId) {
+      await _flutterTts.stop();
+      setState(() {
+        _isSpeaking = false;
+        _currentlyPlayingMessageId = null;
+      });
+      return;
+    }
+    
+    // If speaking a different message, stop that first
+    if (_isSpeaking) {
+      await _flutterTts.stop();
+    }
+    
+    // Start speaking the new message
     await _flutterTts.setLanguage("en-US");
     await _flutterTts.setPitch(1.0);
     await _flutterTts.speak(text);
+    
+    setState(() {
+      _isSpeaking = true;
+      _currentlyPlayingMessageId = messageId;
+    });
+  }
+
+  // Search function to filter messages
+  void _searchMessages(String query) {
+    if (query.isEmpty) {
+      setState(() {
+        _filteredMessages = List.from(_messages);
+      });
+      return;
+    }
+    
+    final lowercaseQuery = query.toLowerCase();
+    setState(() {
+      _filteredMessages = _messages.where((message) {
+        final text = message['text'] as String;
+        return text.toLowerCase().contains(lowercaseQuery);
+      }).toList();
+    });
+  }
+
+  // Toggle search bar visibility
+  void _toggleSearch() {
+    setState(() {
+      _isSearching = !_isSearching;
+      if (!_isSearching) {
+        _searchController.clear();
+        _filteredMessages = List.from(_messages);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Health Help', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF005792))),
-        backgroundColor: Colors.white, // Or the specific background from image
-        elevation: 0, // Remove shadow if needed
-        centerTitle: false, // Align title to the left
+        title: _isSearching
+            ? TextField(
+                controller: _searchController,
+                decoration: const InputDecoration(
+                  hintText: 'Search messages...',
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(color: Colors.grey),
+                ),
+                style: const TextStyle(color: Color(0xFF005792)),
+                onChanged: _searchMessages,
+                autofocus: true,
+              )
+            : const Text('Health Help', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF005792))),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        actions: [
+          IconButton(
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            onPressed: _toggleSearch,
+            color: const Color(0xFF005792),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -368,9 +464,9 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
             child: ListView.builder(
               reverse: true, // Show latest messages at the bottom
               padding: const EdgeInsets.all(8.0),
-              itemCount: _messages.length,
+              itemCount: _filteredMessages.length,
               itemBuilder: (context, index) {
-                return _buildMessage(_messages[index]);
+                return _buildMessage(_filteredMessages[index]);
               },
             ),
           ),
@@ -470,6 +566,11 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
 
     final String text = message['text'] as String;
     final String time = message['time'] as String;
+    // Generate a unique ID for each message
+    final String messageId = message['id'] ?? '${isUser}_${time}_${text.hashCode}';
+    if (message['id'] == null) {
+      message['id'] = messageId;
+    }
 
     Widget messageContent;
     if (isUser) {
@@ -551,9 +652,17 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
                 ],
                 if (!isUser) ...[
                   IconButton(
-                    icon: const Icon(Icons.volume_up, size: 18.0, color: Colors.blue),
-                    tooltip: 'Read aloud',
-                    onPressed: () => _speak(text),
+                    icon: Icon(
+                      _isSpeaking && _currentlyPlayingMessageId == messageId
+                          ? Icons.pause
+                          : Icons.volume_up,
+                      size: 18.0,
+                      color: Colors.blue,
+                    ),
+                    tooltip: _isSpeaking && _currentlyPlayingMessageId == messageId
+                        ? 'Stop speaking'
+                        : 'Read aloud',
+                    onPressed: () => _speak(text, messageId),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
