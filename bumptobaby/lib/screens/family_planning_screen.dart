@@ -747,8 +747,14 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
   }
   
   Widget _buildContraceptiveOptionsTab() {
+    // For users who want more children, show conception tips
     if (_planningGoal == 'want_more_children') {
       return _buildConceptionTipsTab();
+    }
+    
+    // For undecided users, show a balanced view with both options
+    if (_planningGoal == 'undecided') {
+      return _buildUndecidedOptionsTab();
     }
     
     List<Map<String, dynamic>> contraceptiveOptions = [];
@@ -762,6 +768,8 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
           'effectiveness': '99% effective',
           'icon': Icons.health_and_safety,
           'color': Colors.teal,
+          'gender': 'Female',
+          'details': 'Lasts 3-7 years depending on type. May reduce period pain and bleeding. Requires insertion by a healthcare provider.'
         },
         {
           'title': 'Copper IUD',
@@ -769,13 +777,44 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
           'effectiveness': '99% effective',
           'color': Colors.amber,
           'icon': Icons.device_thermostat,
+          'gender': 'Female',
+          'details': 'Can last up to 10-12 years. May cause heavier periods. Immediately reversible upon removal.'
         },
         {
-          'title': 'Sterilization',
-          'description': 'Permanent surgical procedure for those who don\'t want children.',
+          'title': 'Female Sterilization',
+          'description': 'Permanent surgical procedure that blocks the fallopian tubes.',
           'effectiveness': '99% effective',
           'color': Colors.purple,
           'icon': Icons.medical_services,
+          'gender': 'Female',
+          'details': 'Tubal ligation or "getting your tubes tied" is a permanent method. The procedure can be done laparoscopically with minimal recovery time.'
+        },
+        {
+          'title': 'Vasectomy',
+          'description': 'Permanent surgical procedure that blocks sperm from leaving the body.',
+          'effectiveness': '99% effective',
+          'color': Colors.blue,
+          'icon': Icons.medical_services,
+          'gender': 'Male',
+          'details': 'A minor outpatient procedure with quick recovery. Takes about 3 months to be fully effective. More simple and less invasive than female sterilization.'
+        },
+        {
+          'title': 'Hormonal Implant',
+          'description': 'A small rod inserted under the skin of the upper arm that releases hormones.',
+          'effectiveness': '99% effective',
+          'color': Colors.pink,
+          'icon': Icons.medication,
+          'gender': 'Female',
+          'details': 'Lasts up to 3-5 years. Can be removed at any time with quick return to fertility. May cause irregular bleeding.'
+        },
+        {
+          'title': 'Male Condoms',
+          'description': 'Barrier method that also protects against STIs.',
+          'effectiveness': '85% effective',
+          'color': Colors.indigo,
+          'icon': Icons.health_and_safety,
+          'gender': 'Male',
+          'details': 'No prescription needed. Can be used alongside other methods for extra protection. Available in different materials for those with latex allergies.'
         },
       ];
     } else {
@@ -850,6 +889,7 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
                   effectiveness: option['effectiveness'],
                   icon: option['icon'],
                   color: option['color'],
+                  gender: option['gender'] ?? '',
                   onTap: () {
                     // Show detailed information
                     showModalBottomSheet(
@@ -872,24 +912,55 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
                                     child: Icon(option['icon'], color: option['color']),
                                   ),
                                   SizedBox(width: 12),
-                                  Text(
-                                    option['title'],
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          option['title'],
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        if (option['gender'] != null && option['gender'].isNotEmpty)
+                                          Container(
+                                            margin: EdgeInsets.only(top: 4),
+                                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: option['gender'] == 'Female' ? Colors.pink.withOpacity(0.2) : Colors.blue.withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: Text(
+                                              option['gender'],
+                                              style: GoogleFonts.poppins(
+                                                fontSize: 12,
+                                                color: option['gender'] == 'Female' ? Colors.pink : Colors.blue,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
                               SizedBox(height: 16),
-                              Text(
-                                'Effectiveness: ${option['effectiveness']}',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
+                              Container(
+                                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: option['color'].withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  'Effectiveness: ${option['effectiveness']}',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: option['color'],
+                                  ),
                                 ),
                               ),
-                              SizedBox(height: 16),
+                              SizedBox(height: 20),
                               Text(
                                 'Description',
                                 style: GoogleFonts.poppins(
@@ -904,7 +975,23 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
                                   fontSize: 16,
                                 ),
                               ),
-                              // Add more detailed information here
+                              SizedBox(height: 16),
+                              if (option['details'] != null) ...[
+                                Text(
+                                  'Details',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  option['details'],
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         );
@@ -916,6 +1003,174 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
             ),
           ),
         ],
+      ),
+    );
+  }
+  
+  // New tab for undecided users with balanced information
+  Widget _buildUndecidedOptionsTab() {
+    return Padding(
+      padding: EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Reproductive Health',
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              TextButton.icon(
+                icon: Icon(Icons.edit),
+                label: Text('Update Goal'),
+                onPressed: _showPlanningGoalDialog,
+              ),
+            ],
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Information to help you make informed decisions about your reproductive health',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              color: Colors.grey[700],
+            ),
+          ),
+          SizedBox(height: 16),
+          Expanded(
+            child: ListView(
+              children: [
+                _buildInfoCard(
+                  'Understanding Your Cycle',
+                  'Your menstrual cycle is more than just your period. Understanding it can help with family planning decisions.',
+                  Icons.autorenew,
+                  Colors.teal,
+                  [
+                    'The average cycle is 28 days, but can range from 21-35 days',
+                    'Ovulation typically occurs 12-14 days before your next period',
+                    'Tracking your cycle helps identify patterns and irregularities',
+                    'Symptoms like mood changes and cramps can vary throughout your cycle'
+                  ],
+                ),
+                SizedBox(height: 16),
+                _buildInfoCard(
+                  'Fertility Awareness',
+                  'Knowing when you\'re most likely to conceive can help whether you\'re trying to get pregnant or not.',
+                  Icons.calendar_today,
+                  Colors.green,
+                  [
+                    'The "fertile window" is typically 6 days ending with ovulation',
+                    'Fertility signs include changes in cervical mucus and basal body temperature',
+                    'Tracking these signs can help predict your most fertile days',
+                    'This knowledge is useful regardless of your family planning goals'
+                  ],
+                ),
+                SizedBox(height: 16),
+                _buildInfoCard(
+                  'Contraceptive Basics',
+                  'Different methods work in different ways and have varying effectiveness rates.',
+                  Icons.health_and_safety,
+                  Colors.blue,
+                  [
+                    'Barrier methods (condoms) prevent sperm from reaching the egg',
+                    'Hormonal methods (pills, patches) prevent ovulation',
+                    'IUDs provide long-term protection without daily maintenance',
+                    'Emergency contraception is available if other methods fail'
+                  ],
+                ),
+                SizedBox(height: 16),
+                _buildInfoCard(
+                  'Preconception Health',
+                  'Preparing your body for pregnancy can improve outcomes if you decide to have children.',
+                  Icons.favorite,
+                  Colors.red,
+                  [
+                    'Taking folic acid before conception reduces birth defect risks',
+                    'Maintaining a healthy weight improves fertility and pregnancy outcomes',
+                    'Avoiding alcohol, tobacco, and certain medications is recommended',
+                    'Regular check-ups can identify and address potential issues'
+                  ],
+                ),
+                SizedBox(height: 16),
+                _buildInfoCard(
+                  'Making Your Decision',
+                  'Take time to consider your options and talk with healthcare providers.',
+                  Icons.psychology,
+                  Colors.purple,
+                  [
+                    'Consider your life goals, relationship status, and financial situation',
+                    'Discuss options with your partner if applicable',
+                    'Consult healthcare providers for personalized advice',
+                    'Remember that decisions can be revisited as circumstances change'
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildInfoCard(String title, String subtitle, IconData icon, Color color, List<String> bulletPoints) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: color.withOpacity(0.2),
+                  child: Icon(icon, color: color),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 8),
+            Text(
+              subtitle,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[700],
+              ),
+            ),
+            SizedBox(height: 12),
+            ...bulletPoints.map((point) => Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.circle, size: 8, color: color),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      point,
+                      style: GoogleFonts.poppins(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            )).toList(),
+          ],
+        ),
       ),
     );
   }
@@ -1105,8 +1360,7 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
     
     return Padding(
       padding: EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: ListView(
         children: [
           Text(
             'Fertility Tracker',
@@ -1126,189 +1380,500 @@ class _FamilyPlanningScreenState extends State<FamilyPlanningScreen> with Single
             ).length,
             lastInjection: _injectionDates.isNotEmpty ? _injectionDates.last : null,
           ),
-          SizedBox(height: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Calendar',
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+          SizedBox(height: 16),
+          Text(
+            'Calendar',
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  spreadRadius: 1,
+                  blurRadius: 5,
                 ),
-                SizedBox(height: 4),
-                Expanded(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      TableCalendar(
-                        firstDay: DateTime.utc(2020, 1, 1),
-                        lastDay: DateTime.utc(2030, 12, 31),
-                        focusedDay: _focusedDay,
-                        selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                        onDaySelected: (selectedDay, focusedDay) {
-                          setState(() {
-                            _selectedDay = selectedDay;
-                            _focusedDay = focusedDay;
-                          });
-                          _showDayActionSheet(selectedDay);
-                        },
-                        calendarStyle: const CalendarStyle(
-                          markersMaxCount: 3,
-                          markerDecoration: BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
+              ],
+            ),
+            padding: EdgeInsets.all(8),
+            child: TableCalendar(
+              firstDay: DateTime.utc(2020, 1, 1),
+              lastDay: DateTime.utc(2030, 12, 31),
+              focusedDay: _focusedDay,
+              selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+              onDaySelected: (selectedDay, focusedDay) {
+                setState(() {
+                  _selectedDay = selectedDay;
+                  _focusedDay = focusedDay;
+                });
+                _showDayActionSheet(selectedDay);
+              },
+              calendarStyle: const CalendarStyle(
+                markersMaxCount: 4,
+                markerDecoration: BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+                cellMargin: EdgeInsets.all(4),
+                cellPadding: EdgeInsets.all(4),
+              ),
+              calendarBuilders: CalendarBuilders(
+                defaultBuilder: (context, day, focusedDay) {
+                  bool isPeriod = _isPeriodDay(day);
+                  bool isFertile = _isFertileDay(day);
+                  bool isPill = _isPillTakenDay(day);
+                  bool isInjection = _isInjectionDay(day);
+                  
+                  // If no markers, return null to use default rendering
+                  if (!isPeriod && !isFertile && !isPill && !isInjection) {
+                    return null;
+                  }
+                  
+                  // Choose background color based on day type
+                  Color backgroundColor = Colors.transparent;
+                  if (isPeriod) {
+                    backgroundColor = Colors.red.withOpacity(0.15);
+                  } else if (isFertile) {
+                    backgroundColor = Colors.green.withOpacity(0.15);
+                  }
+                  
+                  return Container(
+                    margin: const EdgeInsets.all(4.0),
+                    decoration: BoxDecoration(
+                      color: backgroundColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isPeriod ? Colors.red.withOpacity(0.3) : 
+                               isFertile ? Colors.green.withOpacity(0.3) : 
+                               Colors.transparent,
+                        width: 1,
+                      ),
+                    ),
+                    child: Stack(
+                      children: [
+                        // Day number in center
+                        Center(
+                          child: Text(
+                            '${day.day}',
+                            style: TextStyle(
+                              color: isPeriod ? Colors.red[800] : 
+                                     isFertile ? Colors.green[800] : 
+                                     Colors.black87,
+                              fontWeight: isPeriod || isFertile ? FontWeight.bold : FontWeight.normal,
+                            ),
                           ),
-                          // Make the calendar more compact
-                          cellMargin: EdgeInsets.all(2),
-                          cellPadding: EdgeInsets.all(2),
                         ),
-                        calendarBuilders: CalendarBuilders(
-                          markerBuilder: (context, date, events) {
-                            final markers = <Widget>[];
-                            
-                            if (_isPeriodDay(date)) {
-                              markers.add(
-                                Positioned(
-                                  bottom: 1,
-                                  child: Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Colors.red,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
-                            
-                            if (_isPillTakenDay(date)) {
-                              markers.add(
-                                Positioned(
-                                  top: 1,
-                                  right: 1,
-                                  child: Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Colors.orange,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
-                            
-                            if (_isInjectionDay(date)) {
-                              markers.add(
-                                Positioned(
-                                  top: 1,
-                                  left: 1,
-                                  child: Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Colors.purple,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
-                            
-                            return markers.isEmpty ? null : Stack(children: markers);
-                          },
-                          defaultBuilder: (context, day, focusedDay) {
-                            if (_isFertileDay(day)) {
-                              return Container(
-                                margin: const EdgeInsets.all(4.0),
+                        
+                        // Pill indicator (top right)
+                        if (isPill)
+                          Positioned(
+                            top: 2,
+                            right: 2,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Colors.orange,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 1),
+                              ),
+                            ),
+                          ),
+                        
+                        // Injection indicator (top left)
+                        if (isInjection)
+                          Positioned(
+                            top: 2,
+                            left: 2,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Colors.purple,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 1),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+                selectedBuilder: (context, day, focusedDay) {
+                  bool isPeriod = _isPeriodDay(day);
+                  bool isFertile = _isFertileDay(day);
+                  bool isPill = _isPillTakenDay(day);
+                  bool isInjection = _isInjectionDay(day);
+                  
+                  return Container(
+                    margin: const EdgeInsets.all(4.0),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.blue,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Stack(
+                      children: [
+                        // Day number in center
+                        Center(
+                          child: Text(
+                            '${day.day}',
+                            style: TextStyle(
+                              color: Colors.blue[800],
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        
+                        // Period indicator (bottom)
+                        if (isPeriod)
+                          Positioned(
+                            bottom: 2,
+                            right: 0,
+                            left: 0,
+                            child: Center(
+                              child: Container(
+                                width: 8,
+                                height: 8,
                                 decoration: BoxDecoration(
-                                  color: Colors.green.withOpacity(0.15),
+                                  color: Colors.red,
                                   shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 1),
                                 ),
-                                child: Center(
-                                  child: Text(
-                                    '${day.day}',
-                                    style: TextStyle(color: Colors.green[800]),
-                                  ),
-                                ),
-                              );
-                            }
-                            return null;
-                          },
-                        ),
-                        headerStyle: const HeaderStyle(
-                          formatButtonVisible: false,
-                          titleCentered: true,
-                          // Make the header more compact
-                          titleTextStyle: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
-                          leftChevronIcon: Icon(Icons.chevron_left, size: 20),
-                          rightChevronIcon: Icon(Icons.chevron_right, size: 20),
-                          headerPadding: EdgeInsets.symmetric(vertical: 8),
-                        ),
-                        daysOfWeekStyle: const DaysOfWeekStyle(
-                          // Make the days of week more compact
-                          weekdayStyle: TextStyle(fontSize: 12),
-                          weekendStyle: TextStyle(fontSize: 12),
-                        ),
-                        calendarFormat: CalendarFormat.month,
-                        availableCalendarFormats: const {
-                          CalendarFormat.month: 'Month',
-                        },
-                        rowHeight: 40, // Make rows more compact
+                        
+                        // Pill indicator (top right)
+                        if (isPill)
+                          Positioned(
+                            top: 2,
+                            right: 2,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Colors.orange,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 1),
+                              ),
+                            ),
+                          ),
+                        
+                        // Injection indicator (top left)
+                        if (isInjection)
+                          Positioned(
+                            top: 2,
+                            left: 2,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Colors.purple,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 1),
+                              ),
+                            ),
+                          ),
+                        
+                        // Fertile indicator (center bottom)
+                        if (isFertile && !isPeriod)
+                          Positioned(
+                            bottom: 2,
+                            right: 0,
+                            left: 0,
+                            child: Center(
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: Colors.green,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 1),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+                todayBuilder: (context, day, focusedDay) {
+                  bool isPeriod = _isPeriodDay(day);
+                  bool isFertile = _isFertileDay(day);
+                  bool isPill = _isPillTakenDay(day);
+                  bool isInjection = _isInjectionDay(day);
+                  
+                  // Choose background color based on day type
+                  Color backgroundColor = Colors.blue.withOpacity(0.1);
+                  if (isPeriod) {
+                    backgroundColor = Colors.red.withOpacity(0.15);
+                  } else if (isFertile) {
+                    backgroundColor = Colors.green.withOpacity(0.15);
+                  }
+                  
+                  return Container(
+                    margin: const EdgeInsets.all(4.0),
+                    decoration: BoxDecoration(
+                      color: backgroundColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.blue.withOpacity(0.5),
+                        width: 1.5,
+                        style: BorderStyle.solid,
                       ),
-                      Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildLegendItem(Colors.red, 'Period'),
-                            SizedBox(width: 16),
-                            _buildLegendItem(Colors.green, 'Fertile'),
-                            SizedBox(width: 16),
-                            _buildLegendItem(Colors.orange, 'Pill'),
-                            SizedBox(width: 16),
-                            _buildLegendItem(Colors.purple, 'Injection'),
-                          ],
+                    ),
+                    child: Stack(
+                      children: [
+                        // Day number in center
+                        Center(
+                          child: Text(
+                            '${day.day}',
+                            style: TextStyle(
+                              color: isPeriod ? Colors.red[800] : 
+                                     isFertile ? Colors.green[800] : 
+                                     Colors.blue[800],
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                        
+                        // Period indicator (bottom)
+                        if (isPeriod)
+                          Positioned(
+                            bottom: 2,
+                            right: 0,
+                            left: 0,
+                            child: Center(
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 1),
+                                ),
+                              ),
+                            ),
+                          ),
+                        
+                        // Pill indicator (top right)
+                        if (isPill)
+                          Positioned(
+                            top: 2,
+                            right: 2,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Colors.orange,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 1),
+                              ),
+                            ),
+                          ),
+                        
+                        // Injection indicator (top left)
+                        if (isInjection)
+                          Positioned(
+                            top: 2,
+                            left: 2,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Colors.purple,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 1),
+                              ),
+                            ),
+                          ),
+                        
+                        // Fertile indicator (center bottom)
+                        if (isFertile && !isPeriod)
+                          Positioned(
+                            bottom: 2,
+                            right: 0,
+                            left: 0,
+                            child: Center(
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: Colors.green,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 1),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+                // Remove the marker builder as we're handling markers in the day builders
+                markerBuilder: (context, date, events) => null,
+              ),
+              headerStyle: const HeaderStyle(
+                formatButtonVisible: false,
+                titleCentered: true,
+                titleTextStyle: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+                leftChevronIcon: Icon(Icons.chevron_left, size: 20),
+                rightChevronIcon: Icon(Icons.chevron_right, size: 20),
+                headerPadding: EdgeInsets.symmetric(vertical: 8),
+              ),
+              daysOfWeekStyle: const DaysOfWeekStyle(
+                weekdayStyle: TextStyle(fontSize: 12),
+                weekendStyle: TextStyle(fontSize: 12),
+              ),
+              calendarFormat: CalendarFormat.month,
+              availableCalendarFormats: const {
+                CalendarFormat.month: 'Month',
+              },
+              rowHeight: 48, // Slightly taller rows for better spacing and visibility of markers
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildEnhancedLegendItem(Colors.red, 'Period', Icons.circle),
+                    SizedBox(width: 16),
+                    _buildEnhancedLegendItem(Colors.green, 'Fertile', Icons.circle),
+                  ],
+                ),
+                SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildEnhancedLegendItem(Colors.orange, 'Pill', Icons.medication),
+                    SizedBox(width: 16),
+                    _buildEnhancedLegendItem(Colors.purple, 'Injection', Icons.vaccines),
+                  ],
                 ),
               ],
             ),
           ),
+          SizedBox(height: 16),
+          if (_planningGoal == 'undecided') ...[
+            _buildFertilityExplanationCard(),
+          ],
         ],
       ),
     );
   }
   
-  Widget _buildLegendItem(Color color, String label) {
+  Widget _buildEnhancedLegendItem(Color color, String label, IconData icon) {
     return Row(
       children: [
         Container(
-          width: 12,
-          height: 12,
+          width: 20,
+          height: 20,
           decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
+            color: color.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: color, width: 1),
+          ),
+          child: Center(
+            child: Icon(icon, size: 12, color: color),
           ),
         ),
-        SizedBox(width: 4),
+        SizedBox(width: 6),
         Text(
           label,
           style: GoogleFonts.poppins(
             fontSize: 12,
-            color: Colors.grey[700],
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[800],
           ),
         ),
       ],
+    );
+  }
+  
+  Widget _buildFertilityExplanationCard() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Understanding Fertility',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.green[700],
+              ),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Tracking your fertile days can be helpful whether you\'re trying to conceive or avoid pregnancy.',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[800],
+              ),
+            ),
+            SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, color: Colors.green, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Green days indicate your estimated fertile window, when pregnancy is most likely.',
+                    style: GoogleFonts.poppins(fontSize: 14),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, color: Colors.red, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Red markers show days when you recorded your period.',
+                    style: GoogleFonts.poppins(fontSize: 14),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Note: This is an estimate based on your cycle data. For more accurate fertility tracking, consider additional methods like tracking basal body temperature or using ovulation tests.',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
   
