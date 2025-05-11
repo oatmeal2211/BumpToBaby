@@ -1,7 +1,19 @@
 # BumpToBaby
 
+![BumpToBaby Banner](./banner.png)
+
 ## About
-BumpToBaby is a comprehensive maternal and child health mobile application designed to support mothers through pregnancy and early childcare. The app provides essential tools, information, and community features to help women navigate their maternal journey with confidence.
+BumpToBaby is a mobile app that centralises all you need as a mother to help you through your pregnancy journey. It integrates AI and LLMs to provide personalised content for diet planning, health tracking as well as language support for medical knowledge.
+
+## 🛠️ Tech Stack
+| Tech         | Purpose |
+|--------------|---------|
+| **Flutter**   | Frontend and Backend Development |
+| **Firebase**    | Authentication, Database and Storage |
+| **Gemini**  | AI generated personalised content and insights |
+| **Github**   | Version Control |
+| **Perspective API** | Content Moderation |
+| **Google Maps API**   | Map Data Integration |
 
 ## Features
 
@@ -12,13 +24,15 @@ BumpToBaby is a comprehensive maternal and child health mobile application desig
 - Profile customization with profile picture upload
 
 ### 2. Home Screen Dashboard
-Six main feature buttons providing access to:
-- Nearest Clinics: Find and navigate to nearby healthcare facilities
-- Health Tracker: Monitor pregnancy progress, symptoms, and baby development
-- Appointment Scheduler: Manage doctor appointments and reminders
-- Educational Resources: Access pregnancy and childcare information
-- Emergency Contacts: Quick access to emergency services
-- Community Forum: Connect with other mothers
+Eight main feature buttons providing access to:
+- Vaccination Clinic Nearby: Find and navigate to nearby healthcare facilities
+- Smart Health Tracker: Creates personalised health schedule by filling in health survey
+- Growth & Development: Monitor pregnancy progress, symptoms, and baby development
+- Audio/Visual Learning: Platform for educational videos, podcasts and audiobooks related to pregnancy and motherhood
+- Nutrition & Meals: Creates personalised nutrition and meal plans based on pregnancy stage and dietary requirements
+- Family Planning: Family planning trackers depending on family planning goal
+- Health Help: AI assistant that answers pregnancy related questions and can be translated into different languages
+- Community: Allows interaction between users to make posts sharing pregnancy progress, also has events feature to showcase upcoming events
 
 ### 3. Community Features
 - Events Calendar: Horizontally scrollable important dates for mothers
@@ -74,23 +88,71 @@ Six main feature buttons providing access to:
    rules_version = '2';
    service cloud.firestore {
      match /databases/{database}/documents {
+       // User profile rules
        match /users/{userId} {
+         // Allow read of any user profile
          allow read: if request.auth != null;
+         // Only allow users to modify their own profile
          allow write: if request.auth != null && request.auth.uid == userId;
        }
-       
+    
+       // Posts rules
        match /posts/{postId} {
-         allow read: if request.auth != null;
-         allow create: if request.auth != null;
-         allow update, delete: if request.auth != null && 
-                               resource.data.userId == request.auth.uid;
+  		   // Anyone logged in can read posts
+  		   allow read: if request.auth != null;
+
+  		   // Only creator can update/delete their posts (excluding likes)
+  		   allow update, delete: if request.auth != null
+                           && request.auth.uid == resource.data.userId
+                           && !(request.resource.data.keys().hasAny(['likes']) &&
+                                !(request.resource.data.likes == resource.data.likes));
+
+  		   // Allow users to like/unlike by updating only the likes array
+  		   allow update: if request.auth != null &&
+                   request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
+                   request.resource.data.userId == resource.data.userId;
+
+  		   // Anyone logged in can create posts
+  		   allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      
+         // Allow others to update ONLY the commentsCount field
+  		   allow update: if request.auth != null &&
+                   request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount']);
+
+  		   allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+
+  		   // Comments subcollection (unchanged)
+  		   match /comments/{commentId} {
+    		   allow read: if request.auth != null;
+
+    		   // Allow comment creation only if userId is set and matches the authenticated user
+    		   allow create: if request.auth != null &&
+                     request.resource.data.keys().hasAll(['userId', 'content']) &&
+                     request.resource.data.userId == request.auth.uid;
+
+    		   // Allow only comment creator to update/delete their comment
+    		   allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+  			   }
+		   }
+    
+       // Allow users to read and write their own family planning data
+       match /familyPlanning/{userId} {
+         allow read, write: if request.auth != null && request.auth.uid == userId;
        }
-       
-       match /comments/{commentId} {
-         allow read: if request.auth != null;
-         allow create: if request.auth != null;
-         allow update, delete: if request.auth != null && 
-                               resource.data.userId == request.auth.uid;
+    
+       // Allow users to read and write their own health surveys
+       match /health_surveys/{userId}/{document=**} {
+         allow read, write: if request.auth != null && request.auth.uid == userId;
+       }
+    
+       // Allow users to read and write their own health schedules
+       match /health_schedules/{userId} {
+         allow read, write: if request.auth != null && request.auth.uid == userId;
+       }
+    
+       // Default deny
+       match /{document=**} {
+         allow read, write: if false;
        }
      }
    }
@@ -119,8 +181,22 @@ Six main feature buttons providing access to:
 7. **Environment Configuration**
    Create a `.env` file in the root directory with the following variables:
    ```
-   GOOGLE_MAPS_API_KEY=your_google_maps_api_key
-   WEATHER_API_KEY=your_weather_api_key
+   ANDROID_API_KEY=YOUR_FIREBASE_ANDROID_API_KEY
+   ANDROID_APP_ID=YOUR_FIREBASE_ANDROID_APP_ID
+   ANDROID_SENDER_ID=YOUR_FIREBASE_ANDROID_SENDER_ID
+   ANDROID_PROJECT_ID=YOUR_FIREBASE_ANDROID_PROJECT_ID
+   ANDROID_STORAGE_BUCKET=YOUR_FIREBASE_ANDROID_STORAGE_BUCKET
+
+   IOS_API_KEY=YOUR_FIREBASE_IOS_API_KEY
+   IOS_APP_ID=YOUR_FIREBASE_IOS_APP_ID
+   IOS_SENDER_ID=YOUR_FIREBASE_IOS_SENDER_ID
+   IOS_PROJECT_ID=YOUR_FIREBASE_IOS_PROJECT_ID
+   IOS_STORAGE_BUCKET=YOUR_FIREBASE_IOS_STORAGE_BUCKET
+   IOS_BUNDLE_ID=YOUR_FIREBASE_IOS_BUNDLE_ID
+
+   GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
+   PERSPECTIVE_API_KEY=YOUR_PERSPECTIVE_API_KEY
+   GEMINI_API_KEY=YOUR_GEMENI_API_KEY
    ```
 
 8. **Example google-services.json format**
@@ -229,8 +305,18 @@ Six main feature buttons providing access to:
    - Verify your Google Maps API key is correctly set in the `.env` file
    - Ensure the Google Maps API is enabled in your Google Cloud Console
 
-## Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
 
-## License
-This project is licensed under the MIT License - see the LICENSE file for details.
+## Team
+- **Team Name:** [Trying Our Best]
+- **Members:** [Siew Wei En], [Lee Lik Shen], [Maxwell Jared Daniel] 
+- **Institution:** University of Malaya
+
+## Contact
+📧 [Siew Wei En]  
+🔗 [Linkedin](https://www.linkedin.com/in/weiensiew/)
+
+📧 [Lee Lik Shen]  
+🔗 [Linkedin](linkedin.com/in/leelikshen)
+
+📧 [Maxwell Jared Daniel]  
+🔗 [Linkedin](https://www.linkedin.com/in/maxwell-jared-daniel-215927298/)
