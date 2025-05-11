@@ -23,6 +23,25 @@ enum GrowthScreenMode { pregnancy, baby }
 // Enum for fetal size units
 enum FetalSizeUnit { cm, inch }
 
+// Data class for User Profile
+class UserProfile {
+  String id;
+  String name;
+  // In future stages, profile-specific data like diary entries, mode, score etc. will be here
+
+  UserProfile({required this.id, required this.name});
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+  };
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
+    id: json['id'],
+    name: json['name'],
+  );
+}
+
 // Data class for Diary Entry
 class DiaryEntry {
   final DateTime date;
@@ -99,55 +118,186 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> {
 
   // For data persistence
   bool _isLoading = true;
+  int _userScore = 0; // User's score for gamification
+
+  // Profile-related state
+  List<UserProfile> _profiles = [];
+  String? _currentProfileId; // Nullable to handle cases where no profile exists yet
 
   @override
   void initState() {
     super.initState();
     _selectedDiaryDate = DateTime(_selectedDiaryDate.year, _selectedDiaryDate.month, _selectedDiaryDate.day); // Normalize to midnight
-    // Load saved data
     _loadSavedData();
+  }
+
+  @override
+  void dispose() {
+    _saveData(); // Save data when the screen is disposed
+    super.dispose();
+  }
+
+  // Handle profile deletion with proper state management
+  Future<void> _deleteProfileAndData(UserProfile profile) async {
+    // Don't allow deleting the last profile
+    if (_profiles.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cannot delete the only profile')),
+      );
+      return;
+    }
+
+    // Create a new list without the profile to delete
+    final newProfiles = _profiles.where((p) => p.id != profile.id).toList();
+    
+    // If we're deleting the current profile, switch to another one
+    bool needsProfileSwitch = profile.id == _currentProfileId;
+    // Ensure we're using a non-null value for newCurrentId
+    String newCurrentId = needsProfileSwitch 
+        ? newProfiles.first.id 
+        : (_currentProfileId ?? newProfiles.first.id);
+
+    // Update profiles list and current ID if needed
+    setState(() {
+      _profiles = newProfiles;
+      if (needsProfileSwitch) {
+        _currentProfileId = newCurrentId;
+        _isLoading = true; // Will load data for the new profile
+      }
+    });
+
+    // Delete the profile's data from SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    // Remove profile-specific data
+    await prefs.remove('diary_entries_${profile.id}');
+    await prefs.remove('fetal_measurements_${profile.id}');
+    
+    // Save the updated profiles list
+    await _saveData();
+    
+    // If we switched profiles, load the new profile's data
+    if (needsProfileSwitch) {
+      await _loadSavedData();
+    }
+
+    // Show confirmation
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${profile.name} profile deleted')),
+      );
+    }
+  }
+
+  // Show confirmation dialog before deleting
+  void _showDeleteProfileConfirmationDialog(UserProfile profile) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            'Delete Profile',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Are you sure you want to delete "${profile.name}"? This will remove all data associated with this profile and cannot be undone.',
+            style: GoogleFonts.poppins(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Cancel', style: GoogleFonts.poppins()),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _deleteProfileAndData(profile);
+              },
+              child: Text(
+                'Delete',
+                style: GoogleFonts.poppins(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // Load saved preferences and diary entries
   Future<void> _loadSavedData() async {
+    setState(() { _isLoading = true; });
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // Load selected mode
-      final savedModeIndex = prefs.getInt('selected_mode') ?? 0;
-      
-      // Load calendar view state
-      final savedCalendarExpanded = prefs.getBool('calendar_expanded') ?? false;
-      
-      // Load diary entries
-      final entriesJsonList = prefs.getStringList('diary_entries') ?? [];
-      final loadedEntries = entriesJsonList
-          .map((jsonStr) => DiaryEntry.fromJson(json.decode(jsonStr)))
-          .toList();
+      // Load all profiles first
+      final profilesJsonList = prefs.getStringList('profiles') ?? [];
+      _profiles = profilesJsonList.map((jsonStr) => UserProfile.fromJson(json.decode(jsonStr))).toList();
+      _currentProfileId = prefs.getString('current_profile_id');
 
-      if (mounted) {
-        setState(() {
-          _selectedMode = GrowthScreenMode.values[savedModeIndex];
-          _isCalendarExpanded = savedCalendarExpanded;
-          _allDiaryEntries.clear();
-          _allDiaryEntries.addAll(loadedEntries);
-          _isLoading = false;
-        });
+      // Create default profile if none exists
+      if (_profiles.isEmpty) {
+        final defaultProfile = UserProfile(id: DateTime.now().millisecondsSinceEpoch.toString(), name: 'My First Profile');
+        _profiles.add(defaultProfile);
+        _currentProfileId = defaultProfile.id;
+      } 
+      // Set current profile to first if current ID doesn't exist
+      else if (_currentProfileId == null || !_profiles.any((p) => p.id == _currentProfileId)) {
+        _currentProfileId = _profiles.first.id;
       }
       
-      // Only fetch AI insights if there are diary entries
-      if (_allDiaryEntries.isNotEmpty) {
-        _fetchAndSetAiInsights();
+      // Load profile-specific data
+      if (_currentProfileId != null) {
+        // Load mode (pregnancy/baby)
+        final profileSpecificModeIndex = prefs.getInt('selected_mode_$_currentProfileId') ?? GrowthScreenMode.pregnancy.index;
+        _selectedMode = GrowthScreenMode.values[profileSpecificModeIndex];
+        
+        // Load calendar state
+        _isCalendarExpanded = prefs.getBool('calendar_expanded_$_currentProfileId') ?? false;
+        
+        // Load diary entries
+        _allDiaryEntries.clear(); // Clear any existing entries first
+        final profileEntriesJsonList = prefs.getStringList('diary_entries_$_currentProfileId') ?? [];
+        if (profileEntriesJsonList.isNotEmpty) {
+          _allDiaryEntries.addAll(profileEntriesJsonList.map((jsonStr) => DiaryEntry.fromJson(json.decode(jsonStr))).toList());
+        } else {
+          // Add sample entries only for new profiles
+          _addSampleEntries();
+        }
+      } else {
+        // Fallback defaults
+        _selectedMode = GrowthScreenMode.pregnancy;
+        _isCalendarExpanded = false;
+        _allDiaryEntries.clear();
       }
+      
+      // Load global user score
+      _userScore = prefs.getInt('user_score') ?? 0;
+      
+      // Update UI
+      if (mounted) {
+        setState(() { _isLoading = false; });
+      }
+      
+      // Fetch AI insights based on the loaded data
+      _fetchAndSetAiInsights();
+      
+      developer.log('Loaded data for profile: $_currentProfileId with ${_allDiaryEntries.length} entries', name: 'GrowthDevelopmentScreen');
     } catch (e) {
       developer.log('Error loading saved data: $e', name: 'GrowthDevelopmentScreen');
-      // If there's an error, just continue with the default state and add sample data if needed
-      if (_allDiaryEntries.isEmpty) {
-        _addSampleEntries();
+      // Recovery handling
+      if (_profiles.isEmpty) {
+        final defaultProfile = UserProfile(id: DateTime.now().millisecondsSinceEpoch.toString(), name: 'My First Profile');
+        _profiles.add(defaultProfile);
+        _currentProfileId = defaultProfile.id;
       }
-      setState(() {
-        _isLoading = false;
-      });
+      _selectedMode = GrowthScreenMode.pregnancy;
+      _isCalendarExpanded = false;
+      _allDiaryEntries.clear();
+      if (_allDiaryEntries.isEmpty) { _addSampleEntries(); } 
+      
+      if (mounted) {
+        setState(() { _isLoading = false; });
+      }
       _fetchAndSetAiInsights();
     }
   }
@@ -157,30 +307,52 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // Save selected mode
-      await prefs.setInt('selected_mode', _selectedMode.index);
+      // Save all profiles
+      final profilesJsonList = _profiles.map((p) => json.encode(p.toJson())).toList();
+      await prefs.setStringList('profiles', profilesJsonList);
       
-      // Save calendar view state
-      await prefs.setBool('calendar_expanded', _isCalendarExpanded);
+      // Save current profile ID selection
+      if (_currentProfileId != null) {
+        await prefs.setString('current_profile_id', _currentProfileId!);
+
+        // Save profile-specific data
+        await prefs.setInt('selected_mode_$_currentProfileId', _selectedMode.index);
+        await prefs.setBool('calendar_expanded_$_currentProfileId', _isCalendarExpanded);
+        
+        // Save diary entries for this profile
+        final entriesJsonList = _allDiaryEntries.map((entry) => json.encode(entry.toJson())).toList();
+        await prefs.setStringList('diary_entries_$_currentProfileId', entriesJsonList);
+        
+        developer.log('Saved ${_allDiaryEntries.length} entries for profile: $_currentProfileId', name: 'GrowthDevelopmentScreen');
+      }
       
-      // Save diary entries
-      final entriesJsonList = _allDiaryEntries
-          .map((entry) => json.encode(entry.toJson()))
-          .toList();
-      await prefs.setStringList('diary_entries', entriesJsonList);
-      
-      developer.log('Data saved successfully', name: 'GrowthDevelopmentScreen');
+      // Save global user score
+      await prefs.setInt('user_score', _userScore);
     } catch (e) {
       developer.log('Error saving data: $e', name: 'GrowthDevelopmentScreen');
     }
   }
 
-  // Add sample entries for first-time users
+  // Add sample entries for the current profile
   void _addSampleEntries() {
+    // Clear entries first to ensure we're starting fresh
+    _allDiaryEntries.clear();
+    
+    // Get the current profile name for personalized samples
+    String profileName = "this profile";
+    if (_currentProfileId != null) {
+      UserProfile? profile = _profiles.firstWhere(
+        (p) => p.id == _currentProfileId,
+        orElse: () => UserProfile(id: "default", name: "this profile")
+      );
+      profileName = profile.name;
+    }
+    
+    // Add sample entries with references to the profile name
     _allDiaryEntries.addAll([
       DiaryEntry(
         date: DateTime.now().subtract(const Duration(days: 30)).copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
-        journalEntry: "First check-up!",
+        journalEntry: "First check-up for $profileName! Excited to start tracking.",
         cravings: "None yet",
         mood: "Excited",
         fetalSize: 2.5,
@@ -188,33 +360,17 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> {
         pregnancyStage: "Week 8",
       ),
       DiaryEntry(
-        date: DateTime.now().subtract(const Duration(days: 20)).copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
-        journalEntry: "Feeling good today",
-        cravings: "Chocolate",
-        mood: "Happy",
-        fetalSize: 4.2,
-        fetalSizeUnit: FetalSizeUnit.cm,
-        pregnancyStage: "Week 10",
-      ),
-      DiaryEntry(
-        date: DateTime.now().subtract(const Duration(days: 10)).copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
-        journalEntry: "Felt a kick!",
-        cravings: "Ice cream",
-        mood: "Happy",
-        fetalSize: 8.5,
-        fetalSizeUnit: FetalSizeUnit.cm,
-        pregnancyStage: "Week 18",
-      ),
-      DiaryEntry(
         date: DateTime.now().copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
-        journalEntry: "Regular check-up",
-        cravings: "Pickles",
-        mood: "Energetic",
-        fetalSize: 12.3,
+        journalEntry: "Feeling good with $profileName today. Had my regular check-up.",
+        cravings: "Apples",
+        mood: "Happy",
+        fetalSize: 10.0,
         fetalSizeUnit: FetalSizeUnit.cm,
-        pregnancyStage: "Week 20",
+        pregnancyStage: "Week 16",
       ),
     ]);
+    
+    developer.log("Added sample entries for profile: $_currentProfileId", name: "GrowthDevelopmentScreen");
   }
 
   Future<void> _fetchAndSetAiInsights() async {
@@ -334,6 +490,157 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
     }
   }
 
+  // New widget to display the score in a capsule
+  Widget _buildScoreDisplay() {
+    return Padding(
+      padding: const EdgeInsets.only(right: 12.0, top: 8.0, bottom: 8.0), // Add some padding
+      child: Chip(
+        avatar: Icon(Icons.star, color: Colors.amber, size: 18),
+        label: Text(
+          '$_userScore',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        backgroundColor: Color(0xFF78A0E5), // Theme color
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      ),
+    );
+  }
+
+  // Dialog to add a new profile
+  Future<void> _showAddProfileDialog() async {
+    final TextEditingController nameController = TextEditingController();
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: Text('Add New Profile', style: GoogleFonts.poppins()),
+          content: TextField(
+            controller: nameController,
+            decoration: InputDecoration(
+              hintText: 'E.g., Baby Leo, Pregnancy 2',
+              labelStyle: GoogleFonts.poppins(),
+            ),
+            autofocus: true,
+            style: GoogleFonts.poppins(),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancel', style: GoogleFonts.poppins()),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+            TextButton(
+              child: Text('Add', style: GoogleFonts.poppins()),
+              onPressed: () {
+                if (nameController.text.isNotEmpty) {
+                  final newProfile = UserProfile(
+                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    name: nameController.text,
+                  );
+                  setState(() {
+                    _profiles.add(newProfile);
+                    _currentProfileId = newProfile.id; // Switch to the new profile
+                    
+                    // Initialize data for the new profile
+                    _selectedMode = GrowthScreenMode.pregnancy; // Default mode
+                    _isCalendarExpanded = false; // Default calendar state
+                    _allDiaryEntries.clear(); // Clear any existing (global/previous profile) entries from state
+                    _addSampleEntries(); // Add sample entries for the new profile
+                    
+                    // AI insights will be fetched by _loadSavedData or explicitly after this
+                  });
+                  _saveData(); // Save the new profile list, current ID, and its initial data
+                  _fetchAndSetAiInsights(); // Fetch insights for the new profile immediately
+                  Navigator.of(dialogContext).pop();
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Profile name cannot be empty.', style: GoogleFonts.poppins())),
+                  );
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Method to show the points gained dialog
+  Future<void> _showPointsGainedDialog() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: true, // User can tap outside to dismiss
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+          elevation: 5,
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                )
+              ]
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 500),
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    return ScaleTransition(child: child, scale: animation);
+                  },
+                  child: Text(
+                    '🎉 +10 ⭐',
+                    key: ValueKey<int>(DateTime.now().millisecondsSinceEpoch), // Unique key to trigger animation
+                    style: GoogleFonts.poppins(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.amber[700],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  'Entry Saved!',
+                  style: GoogleFonts.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  "You've earned 10 points!",
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[700]),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF78A0E5),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                  ),
+                  child: Text('Awesome!', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w500)),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(); // Dismiss dialog
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _goToPreviousWeek() {
     setState(() {
       _selectedDiaryDate = _selectedDiaryDate.subtract(const Duration(days: 7));
@@ -367,15 +674,191 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
 
   @override
   Widget build(BuildContext context) {
+    developer.log("Building GrowthScreen. Profiles: ${_profiles.length}, CurrentID: $_currentProfileId, IsLoading: $_isLoading", name: "GrowthScreenBuild");
+    // Safely get the current profile, providing a fallback if needed.
+    UserProfile currentProfile = _profiles.firstWhere(
+      (p) => p.id == _currentProfileId,
+      orElse: () => _profiles.isNotEmpty 
+                   ? _profiles.first 
+                   : UserProfile(id: "default_fallback", name: "Profile"), // Fallback
+    );
+
+    // If current profile ID doesn't exist in the profiles list, correct it
+    if (_currentProfileId == null || 
+        (_profiles.isNotEmpty && !_profiles.any((p) => p.id == _currentProfileId))) {
+      // Safely update to a valid profile
+      _currentProfileId = _profiles.isNotEmpty ? _profiles.first.id : "default";
+      _saveData(); // Persist this correction
+    }
+
+    List<DropdownMenuItem<String>> profileDropdownItems = _profiles.map((profile) {
+      return DropdownMenuItem<String>(
+        value: profile.id,
+        child: Row(
+          children: [
+            Icon(Icons.child_care_outlined, size: 18, color: Colors.grey[700]),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                profile.name,
+                style: GoogleFonts.poppins(fontSize: 14),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
+
+    // Separate menu item for adding new profile
+    profileDropdownItems.add(
+      DropdownMenuItem<String>(
+        value: '__add_new__',
+        child: Row(
+          children: [
+            Icon(Icons.add_circle_outline, size: 18, color: Theme.of(context).primaryColor),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                'Add New Profile...',
+                style: GoogleFonts.poppins(fontSize: 14, color: Theme.of(context).primaryColor),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
           'Growth & Development',
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.bold,
+            fontSize: 20,
           ),
+          overflow: TextOverflow.ellipsis,
         ),
         backgroundColor: const Color(0xFFAFC9F8),
+        actions: [
+          // Profile Dropdown - Enhanced UI
+          if (_profiles.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2.0), // Minimal vertical padding
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 150, maxHeight: 40), // Increased height
+                padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 0), // Minimal horizontal padding
+                decoration: BoxDecoration(
+                  color: Color(0xFF78A0E5).withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center, // Center the content
+                  children: [
+                    Expanded(
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          isDense: true, // This makes the dropdown more compact
+                          isExpanded: true,
+                          value: _currentProfileId,
+                          icon: Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+                          selectedItemBuilder: (BuildContext context) {
+                            return _profiles.map<Widget>((UserProfile profile) {
+                              if (profile.id == _currentProfileId) {
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.all(4.0), // Added padding around the icon
+                                      child: Icon(Icons.child_care, color: Colors.white, size: 14),
+                                    ),
+                                    Flexible(
+                                      child: Text(
+                                        profile.name, 
+                                        style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 12),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            }).toList();
+                          },
+                          items: profileDropdownItems,
+                          onChanged: (String? selectedValue) {
+                            // Important: First check if we need to add new profile
+                            if (selectedValue == '__add_new__') {
+                              _showAddProfileDialog();
+                              return; // Exit early after showing dialog
+                            } 
+                            
+                            // Handle profile switching
+                            if (selectedValue != null && selectedValue != _currentProfileId) {
+                              final String newProfileIdToLoad = selectedValue;
+                              // _currentProfileId currently holds the ID of the profile whose data is loaded.
+
+                              setState(() { 
+                                _isLoading = true; // Show loading indicator immediately
+                              });
+
+                              // 1. Save the data for the currently active profile (_currentProfileId).
+                              //    _saveData() saves _allDiaryEntries and settings using the current _currentProfileId.
+                              //    It ALSO saves this _currentProfileId as 'current_profile_id' in prefs for now.
+                              _saveData().then((_) {
+                                // Data for the *old* profile is now saved.
+                                // 'current_profile_id' in prefs temporarily points to the *old* profile.
+
+                                if (mounted) {
+                                  // 2. Update the application's current profile ID state.
+                                  setState(() {
+                                    _currentProfileId = newProfileIdToLoad;
+                                    // At this point, _allDiaryEntries and other settings in memory might still be for the old profile,
+                                    // but _currentProfileId is now for the new one.
+                                  });
+
+                                  // 3. Persist the NEW profile ID as the "current" one in SharedPreferences.
+                                  //    This OVERWRITES the 'current_profile_id' set by the previous _saveData() call.
+                                  SharedPreferences.getInstance().then((prefs) {
+                                    prefs.setString('current_profile_id', newProfileIdToLoad).then((_) {
+                                      if (mounted) {
+                                        // 4. Load the data for the new profile.
+                                        //    _loadSavedData will read the 'current_profile_id' we just set (newProfileIdToLoad),
+                                        //    and then load the corresponding diary entries and settings.
+                                        _loadSavedData(); // This will eventually set _isLoading = false and refresh UI.
+                                      }
+                                    });
+                                  });
+                                }
+                              });
+                            }
+                          },
+                          dropdownColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                    if (_profiles.length > 1) // Only show delete if more than one profile
+                      Container(
+                        width: 28, // Fixed width for the delete button area
+                        child: IconButton(
+                          icon: Icon(Icons.delete_outline, size: 18, color: Colors.white.withOpacity(0.8)),
+                          padding: EdgeInsets.symmetric(horizontal: 0), // No horizontal padding
+                          constraints: const BoxConstraints(minWidth: 24, minHeight: 24), // Minimal size
+                          tooltip: 'Delete profile',
+                          onPressed: () {
+                            _showDeleteProfileConfirmationDialog(currentProfile);
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(width: 4),
+          _buildScoreDisplay(),
+        ],
       ),
       body: _isLoading 
           ? const Center(child: CircularProgressIndicator())
@@ -439,17 +922,15 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
             indicatorColor: const Color(0xFF78A0E5),
             labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
             unselectedLabelStyle: GoogleFonts.poppins(),
-            isScrollable: true,
             indicator: BoxDecoration(
               color: Colors.transparent, // Make the indicator transparent
               border: Border(
                 bottom: BorderSide(color: const Color(0xFF78A0E5), width: 2), // Custom indicator
               ),
             ),
-            labelPadding: const EdgeInsets.symmetric(horizontal: 40), // Adjust padding for centering
             tabs: const [
               Tab(text: 'Fetal Growth'),
-              Tab(text: 'Bump Diary'),
+              Tab(text: 'Bump Diary'), // Reverted to simple text
             ],
           ),
           Expanded(
@@ -753,15 +1234,19 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
             borderRadius: BorderRadius.circular(12),
             side: BorderSide(color: Colors.grey.shade200),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),            
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFAFC9F8), // Set the background color to match the title bar
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.all(16.0),
             child: _isFetchingAiInsights
                 ? const Center(child: CircularProgressIndicator())
                 : Text(
                     _aiInsightText ??
                         "AI insights will appear here. Add diary entries to get personalized tips.",
                     style: GoogleFonts.poppins(
-                        fontSize: 16, fontStyle: FontStyle.italic),                    
+                        fontSize: 16, fontStyle: FontStyle.italic),
                   ),
           ),
         ),
@@ -1433,13 +1918,15 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
                           fetalSizeUnit: selectedUnit,
                           pregnancyStage: selectedPregnancyStage, // Add the selected pregnancy stage
                         ));
+                        _userScore += 10; // Increment score
                         // Save to persist data
                         _saveData();
                         // Refresh AI insights
                         _fetchAndSetAiInsights();
                       });
                       if (context.mounted) { // Check if the widget is still in the tree
-                        Navigator.of(context).pop();
+                        Navigator.of(context).pop(); // Close the add entry dialog first
+                        _showPointsGainedDialog(); // Then show the points gained dialog
                       }
                     } else {
                       if (context.mounted) { // Check if the widget is still in the tree
