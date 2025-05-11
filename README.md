@@ -57,6 +57,7 @@ Eight main feature buttons providing access to:
 - Android Studio or VS Code with Flutter plugins
 - Firebase account
 - Git
+- Android Studio for Emulation
 
 ### Installation Steps
 
