@@ -23,32 +23,88 @@ enum GrowthScreenMode { pregnancy, baby }
 // Enum for fetal size units
 enum FetalSizeUnit { cm, inch }
 
+// New Enum for general length units (for baby height)
+enum LengthUnit { cm, inch }
+
+// New Enum for weight units (for baby weight)
+enum WeightUnit { kg, lb }
+
+// Data class for User Profile
+class UserProfile {
+  String id;
+  String name;
+  // In future stages, profile-specific data like diary entries, mode, score etc. will be here
+
+  UserProfile({required this.id, required this.name});
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+  };
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
+    id: json['id'],
+    name: json['name'],
+  );
+}
+
 // Data class for Diary Entry
 class DiaryEntry {
   final DateTime date;
   final String? imagePath;
-  final String journalEntry;
-  final String cravings;
-  final String mood;
-  final double fetalSize; // Changed to double for numerical value
-  final FetalSizeUnit fetalSizeUnit; // Added unit
-  final String pregnancyStage; // Added pregnancy stage field (stores "Week X")
+  final String title;       // New field
+  final String description; // New field
+
+  // Pregnancy-specific fields (nullable)
+  final String? cravings;
+  final String? mood;
+  final double? fetalSize; 
+  final FetalSizeUnit? fetalSizeUnit; 
+  final String? pregnancyStage;
+
+  // Baby-specific fields (nullable)
+  final double? height;
+  final LengthUnit? heightUnit;
+  final double? weight;
+  final WeightUnit? weightUnit;
 
   DiaryEntry({
     required this.date,
     this.imagePath,
-    required this.journalEntry,
-    required this.cravings,
-    required this.mood,
-    required this.fetalSize,
-    required this.fetalSizeUnit,
-    required this.pregnancyStage,
+    required this.title,
+    required this.description,
+    // Pregnancy fields
+    this.cravings,
+    this.mood,
+    this.fetalSize,
+    this.fetalSizeUnit,
+    this.pregnancyStage,
+    // Baby fields
+    this.height,
+    this.heightUnit,
+    this.weight,
+    this.weightUnit,
   });
 
   // Helper method to get fetal size with unit as string
-  String get fetalSizeDisplay {
+  String? get fetalSizeDisplay {
+    if (fetalSize == null || fetalSizeUnit == null) return null;
     String unitStr = fetalSizeUnit == FetalSizeUnit.cm ? 'cm' : 'inch';
     return '$fetalSize $unitStr';
+  }
+
+  // Helper method to get height with unit as string
+  String? get heightDisplay {
+    if (height == null || heightUnit == null) return null;
+    String unitStr = heightUnit == LengthUnit.cm ? 'cm' : 'inch';
+    return '$height $unitStr';
+  }
+
+  // Helper method to get weight with unit as string
+  String? get weightDisplay {
+    if (weight == null || weightUnit == null) return null;
+    String unitStr = weightUnit == WeightUnit.kg ? 'kg' : 'lb';
+    return '$weight $unitStr';
   }
   
   // Convert DiaryEntry to JSON for storage
@@ -56,26 +112,40 @@ class DiaryEntry {
     return {
       'date': date.millisecondsSinceEpoch,
       'imagePath': imagePath,
-      'journalEntry': journalEntry,
+      'title': title,
+      'description': description,
+      // Pregnancy fields
       'cravings': cravings,
       'mood': mood,
       'fetalSize': fetalSize,
-      'fetalSizeUnit': fetalSizeUnit.index, // Store enum as int
+      'fetalSizeUnit': fetalSizeUnit?.index,
       'pregnancyStage': pregnancyStage,
+      // Baby fields
+      'height': height,
+      'heightUnit': heightUnit?.index,
+      'weight': weight,
+      'weightUnit': weightUnit?.index,
     };
   }
 
   // Create DiaryEntry from JSON data
   factory DiaryEntry.fromJson(Map<String, dynamic> json) {
     return DiaryEntry(
-      date: DateTime.fromMillisecondsSinceEpoch(json['date']),
-      imagePath: json['imagePath'],
-      journalEntry: json['journalEntry'],
-      cravings: json['cravings'],
-      mood: json['mood'],
-      fetalSize: json['fetalSize'],
-      fetalSizeUnit: FetalSizeUnit.values[json['fetalSizeUnit']],
-      pregnancyStage: json['pregnancyStage'],
+      date: DateTime.fromMillisecondsSinceEpoch(json['date'] as int),
+      imagePath: json['imagePath'] as String?,
+      title: (json['title'] as String?) ?? '', // Ensure title is non-null
+      description: (json['description'] as String?) ?? '', // Ensure description is non-null
+      // Pregnancy fields
+      cravings: json['cravings'] as String?,
+      mood: json['mood'] as String?,
+      fetalSize: json['fetalSize'] as double?,
+      fetalSizeUnit: json['fetalSizeUnit'] != null ? FetalSizeUnit.values[json['fetalSizeUnit'] as int] : null,
+      pregnancyStage: json['pregnancyStage'] as String?,
+      // Baby fields
+      height: json['height'] as double?,
+      heightUnit: json['heightUnit'] != null ? LengthUnit.values[json['heightUnit'] as int] : null,
+      weight: json['weight'] as double?,
+      weightUnit: json['weightUnit'] != null ? WeightUnit.values[json['weightUnit'] as int] : null,
     );
   }
 }
@@ -87,7 +157,7 @@ class GrowthDevelopmentScreen extends StatefulWidget {
   State<GrowthDevelopmentScreen> createState() => _GrowthDevelopmentScreenState();
 }
 
-class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> {
+class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with TickerProviderStateMixin { // Add TickerProviderStateMixin
   GrowthScreenMode _selectedMode = GrowthScreenMode.pregnancy; // Default to Pregnancy
   DateTime _selectedDiaryDate = DateTime.now();
   final List<DiaryEntry> _allDiaryEntries = []; // Stores all diary entries
@@ -99,55 +169,227 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> {
 
   // For data persistence
   bool _isLoading = true;
+  int _userScore = 0; // User's score for gamification
+
+  // Profile-related state
+  List<UserProfile> _profiles = [];
+  String? _currentProfileId; // Nullable to handle cases where no profile exists yet
+
+  // TabControllers for managing tab states and listeners
+  TabController? _pregnancyTabController;
+  TabController? _babyTrackerTabController;
 
   @override
   void initState() {
     super.initState();
     _selectedDiaryDate = DateTime(_selectedDiaryDate.year, _selectedDiaryDate.month, _selectedDiaryDate.day); // Normalize to midnight
-    // Load saved data
-    _loadSavedData();
+    
+    // Initialize TabControllers
+    _pregnancyTabController = TabController(length: 2, vsync: this); // 2 tabs for pregnancy
+    _babyTrackerTabController = TabController(length: 2, vsync: this); // 2 tabs for baby tracker
+
+    // Add listeners to TabControllers
+    _pregnancyTabController?.addListener(_handlePregnancyTabSelection);
+    _babyTrackerTabController?.addListener(_handleBabyTrackerTabSelection);
+    
+    _loadSavedData(); // This might trigger an initial fetch if the default tab is 0
+  }
+
+  @override
+  void dispose() {
+    _pregnancyTabController?.removeListener(_handlePregnancyTabSelection);
+    _babyTrackerTabController?.removeListener(_handleBabyTrackerTabSelection);
+    _pregnancyTabController?.dispose();
+    _babyTrackerTabController?.dispose();
+    _saveData(); // Save data when the screen is disposed
+    super.dispose();
+  }
+
+  // Handler for pregnancy tab selection
+  void _handlePregnancyTabSelection() {
+    if (_pregnancyTabController != null && 
+        _pregnancyTabController!.indexIsChanging == false && // Ensure it's a confirmed change
+        _pregnancyTabController!.index == 0 && // 0 is Fetal Growth tab
+        _selectedMode == GrowthScreenMode.pregnancy) { 
+      if (!_isFetchingAiInsights) {
+        _fetchAndSetAiInsights();
+      }
+    }
+  }
+
+  // Handler for baby tracker tab selection
+  void _handleBabyTrackerTabSelection() {
+    if (_babyTrackerTabController != null &&
+        _babyTrackerTabController!.indexIsChanging == false && // Ensure it's a confirmed change
+        _babyTrackerTabController!.index == 0 && // 0 is Baby Growth tab
+        _selectedMode == GrowthScreenMode.baby) {
+      if (!_isFetchingAiInsights) {
+        _fetchAndSetAiInsights();
+      }
+    }
+  }
+
+  // Handle profile deletion with proper state management
+  Future<void> _deleteProfileAndData(UserProfile profile) async {
+    // Don't allow deleting the last profile
+    if (_profiles.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cannot delete the only profile')),
+      );
+      return;
+    }
+
+    // Create a new list without the profile to delete
+    final newProfiles = _profiles.where((p) => p.id != profile.id).toList();
+    
+    // If we're deleting the current profile, switch to another one
+    bool needsProfileSwitch = profile.id == _currentProfileId;
+    // Ensure we're using a non-null value for newCurrentId
+    String newCurrentId = needsProfileSwitch 
+        ? newProfiles.first.id 
+        : (_currentProfileId ?? newProfiles.first.id);
+
+    // Update profiles list and current ID if needed
+    setState(() {
+      _profiles = newProfiles;
+      if (needsProfileSwitch) {
+        _currentProfileId = newCurrentId;
+        _isLoading = true; // Will load data for the new profile
+      }
+    });
+
+    // Delete the profile's data from SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    // Remove profile-specific data
+    await prefs.remove('diary_entries_${profile.id}');
+    await prefs.remove('fetal_measurements_${profile.id}');
+    
+    // Save the updated profiles list
+    await _saveData();
+    
+    // If we switched profiles, load the new profile's data
+    if (needsProfileSwitch) {
+      await _loadSavedData();
+    }
+
+    // Show confirmation
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${profile.name} profile deleted')),
+      );
+    }
+  }
+
+  // Show confirmation dialog before deleting
+  void _showDeleteProfileConfirmationDialog(UserProfile profile) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            'Delete Profile',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Are you sure you want to delete "${profile.name}"? This will remove all data associated with this profile and cannot be undone.',
+            style: GoogleFonts.poppins(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Cancel', style: GoogleFonts.poppins()),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _deleteProfileAndData(profile);
+              },
+              child: Text(
+                'Delete',
+                style: GoogleFonts.poppins(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // Load saved preferences and diary entries
   Future<void> _loadSavedData() async {
+    setState(() { _isLoading = true; });
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // Load selected mode
-      final savedModeIndex = prefs.getInt('selected_mode') ?? 0;
-      
-      // Load calendar view state
-      final savedCalendarExpanded = prefs.getBool('calendar_expanded') ?? false;
-      
-      // Load diary entries
-      final entriesJsonList = prefs.getStringList('diary_entries') ?? [];
-      final loadedEntries = entriesJsonList
-          .map((jsonStr) => DiaryEntry.fromJson(json.decode(jsonStr)))
-          .toList();
+      // Load all profiles first
+      final profilesJsonList = prefs.getStringList('profiles') ?? [];
+      _profiles = profilesJsonList.map((jsonStr) => UserProfile.fromJson(json.decode(jsonStr))).toList();
+      _currentProfileId = prefs.getString('current_profile_id');
 
-      if (mounted) {
-        setState(() {
-          _selectedMode = GrowthScreenMode.values[savedModeIndex];
-          _isCalendarExpanded = savedCalendarExpanded;
-          _allDiaryEntries.clear();
-          _allDiaryEntries.addAll(loadedEntries);
-          _isLoading = false;
-        });
+      // Create default profile if none exists
+      if (_profiles.isEmpty) {
+        final defaultProfile = UserProfile(id: DateTime.now().millisecondsSinceEpoch.toString(), name: 'My First Profile');
+        _profiles.add(defaultProfile);
+        _currentProfileId = defaultProfile.id;
+      } 
+      // Set current profile to first if current ID doesn't exist
+      else if (_currentProfileId == null || !_profiles.any((p) => p.id == _currentProfileId)) {
+        _currentProfileId = _profiles.first.id;
       }
       
-      // Only fetch AI insights if there are diary entries
-      if (_allDiaryEntries.isNotEmpty) {
-        _fetchAndSetAiInsights();
+      // Load profile-specific data
+      if (_currentProfileId != null) {
+        // Load mode (pregnancy/baby)
+        final profileSpecificModeIndex = prefs.getInt('selected_mode_$_currentProfileId') ?? GrowthScreenMode.pregnancy.index;
+        _selectedMode = GrowthScreenMode.values[profileSpecificModeIndex];
+        
+        // Load calendar state
+        _isCalendarExpanded = prefs.getBool('calendar_expanded_$_currentProfileId') ?? false;
+        
+        // Load diary entries
+        _allDiaryEntries.clear(); // Clear any existing entries first
+        final profileEntriesJsonList = prefs.getStringList('diary_entries_$_currentProfileId') ?? [];
+        if (profileEntriesJsonList.isNotEmpty) {
+          _allDiaryEntries.addAll(profileEntriesJsonList.map((jsonStr) => DiaryEntry.fromJson(json.decode(jsonStr))).toList());
+        } else {
+          // Add sample entries only for new profiles
+          _addSampleEntries();
+        }
+      } else {
+        // Fallback defaults
+        _selectedMode = GrowthScreenMode.pregnancy;
+        _isCalendarExpanded = false;
+        _allDiaryEntries.clear();
       }
+      
+      // Load global user score
+      _userScore = prefs.getInt('user_score') ?? 0;
+      
+      // Update UI
+      if (mounted) {
+        setState(() { _isLoading = false; });
+      }
+      
+      // Fetch AI insights based on the loaded data
+      _fetchAndSetAiInsights();
+      
+      developer.log('Loaded data for profile: $_currentProfileId with ${_allDiaryEntries.length} entries', name: 'GrowthDevelopmentScreen');
     } catch (e) {
       developer.log('Error loading saved data: $e', name: 'GrowthDevelopmentScreen');
-      // If there's an error, just continue with the default state and add sample data if needed
-      if (_allDiaryEntries.isEmpty) {
-        _addSampleEntries();
+      // Recovery handling
+      if (_profiles.isEmpty) {
+        final defaultProfile = UserProfile(id: DateTime.now().millisecondsSinceEpoch.toString(), name: 'My First Profile');
+        _profiles.add(defaultProfile);
+        _currentProfileId = defaultProfile.id;
       }
-      setState(() {
-        _isLoading = false;
-      });
+      _selectedMode = GrowthScreenMode.pregnancy;
+      _isCalendarExpanded = false;
+      _allDiaryEntries.clear();
+      if (_allDiaryEntries.isEmpty) { _addSampleEntries(); } 
+      
+      if (mounted) {
+        setState(() { _isLoading = false; });
+      }
       _fetchAndSetAiInsights();
     }
   }
@@ -157,64 +399,70 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // Save selected mode
-      await prefs.setInt('selected_mode', _selectedMode.index);
+      // Save all profiles
+      final profilesJsonList = _profiles.map((p) => json.encode(p.toJson())).toList();
+      await prefs.setStringList('profiles', profilesJsonList);
       
-      // Save calendar view state
-      await prefs.setBool('calendar_expanded', _isCalendarExpanded);
+      // Save current profile ID selection
+      if (_currentProfileId != null) {
+        await prefs.setString('current_profile_id', _currentProfileId!);
+
+        // Save profile-specific data
+        await prefs.setInt('selected_mode_$_currentProfileId', _selectedMode.index);
+        await prefs.setBool('calendar_expanded_$_currentProfileId', _isCalendarExpanded);
+        
+        // Save diary entries for this profile
+        final entriesJsonList = _allDiaryEntries.map((entry) => json.encode(entry.toJson())).toList();
+        await prefs.setStringList('diary_entries_$_currentProfileId', entriesJsonList);
+        
+        developer.log('Saved ${_allDiaryEntries.length} entries for profile: $_currentProfileId', name: 'GrowthDevelopmentScreen');
+      }
       
-      // Save diary entries
-      final entriesJsonList = _allDiaryEntries
-          .map((entry) => json.encode(entry.toJson()))
-          .toList();
-      await prefs.setStringList('diary_entries', entriesJsonList);
-      
-      developer.log('Data saved successfully', name: 'GrowthDevelopmentScreen');
+      // Save global user score
+      await prefs.setInt('user_score', _userScore);
     } catch (e) {
       developer.log('Error saving data: $e', name: 'GrowthDevelopmentScreen');
     }
   }
 
-  // Add sample entries for first-time users
+  // Add sample entries for the current profile
   void _addSampleEntries() {
+    // Clear entries first to ensure we're starting fresh
+    _allDiaryEntries.clear();
+    
+    // Get the current profile name for personalized samples
+    String profileName = "this profile";
+    if (_currentProfileId != null) {
+      UserProfile? profile = _profiles.firstWhere(
+        (p) => p.id == _currentProfileId,
+        orElse: () => UserProfile(id: "default", name: "this profile")
+      );
+      profileName = profile.name;
+    }
+    
+    // Add sample entries with references to the profile name
     _allDiaryEntries.addAll([
       DiaryEntry(
         date: DateTime.now().subtract(const Duration(days: 30)).copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
-        journalEntry: "First check-up!",
-        cravings: "None yet",
+        title: "First check-up for $profileName! Excited to start tracking.",
+        description: "None yet",
         mood: "Excited",
         fetalSize: 2.5,
         fetalSizeUnit: FetalSizeUnit.cm,
         pregnancyStage: "Week 8",
       ),
       DiaryEntry(
-        date: DateTime.now().subtract(const Duration(days: 20)).copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
-        journalEntry: "Feeling good today",
-        cravings: "Chocolate",
-        mood: "Happy",
-        fetalSize: 4.2,
-        fetalSizeUnit: FetalSizeUnit.cm,
-        pregnancyStage: "Week 10",
-      ),
-      DiaryEntry(
-        date: DateTime.now().subtract(const Duration(days: 10)).copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
-        journalEntry: "Felt a kick!",
-        cravings: "Ice cream",
-        mood: "Happy",
-        fetalSize: 8.5,
-        fetalSizeUnit: FetalSizeUnit.cm,
-        pregnancyStage: "Week 18",
-      ),
-      DiaryEntry(
         date: DateTime.now().copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
-        journalEntry: "Regular check-up",
-        cravings: "Pickles",
-        mood: "Energetic",
-        fetalSize: 12.3,
+        title: "Feeling good with $profileName today. Had my regular check-up.",
+        description: "Apples",
+        mood: "Happy",
+        fetalSize: 10.0,
         fetalSizeUnit: FetalSizeUnit.cm,
-        pregnancyStage: "Week 20",
+        pregnancyStage: "Week 16",
       ),
     ]);
+    
+    developer.log("Added sample entries for profile: $_currentProfileId", name: "GrowthDevelopmentScreen");
   }
 
   Future<void> _fetchAndSetAiInsights() async {
@@ -237,7 +485,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> {
     }
 
     try {
-      // 1. Gather data
+      // 1. Gather data (common part)
       final sortedEntries = List<DiaryEntry>.from(_allDiaryEntries);
       if (sortedEntries.isEmpty) {
         if (mounted) {
@@ -248,34 +496,67 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> {
         }
         return;
       }
-      
       sortedEntries.sort((a, b) => a.date.compareTo(b.date));
 
-      final latestEntry = sortedEntries.isNotEmpty ? sortedEntries.last : null;
-      final currentWeekStage = latestEntry?.pregnancyStage ?? "Week 12"; // Default
-      final currentTrimester = _getTrimesterFromWeek(currentWeekStage);
+      String prompt;
 
-      List<String> formattedGrowthData = sortedEntries.map((entry) {
-        return "${DateFormat('yyyy-MM-dd').format(entry.date)}: ${entry.fetalSizeDisplay}, Mood: ${entry.mood}, Cravings: ${entry.cravings}, Journal: ${entry.journalEntry.substring(0, entry.journalEntry.length > 50 ? 50 : entry.journalEntry.length)}${entry.journalEntry.length > 50 ? "..." : ""}";
-      }).toList();
+      if (_selectedMode == GrowthScreenMode.pregnancy) {
+        // --- Pregnancy Mode Prompt --- 
+        final latestEntry = sortedEntries.isNotEmpty ? sortedEntries.last : null;
+        final currentWeekStage = latestEntry?.pregnancyStage ?? "Week 12"; // Default
+        final currentTrimester = _getTrimesterFromWeek(currentWeekStage);
 
-      // 2. Construct Prompt
-      final prompt = """
-You are an AI assistant for a pregnancy tracking app.
-The user is currently in: $currentWeekStage ($currentTrimester).
+        List<String> formattedGrowthData = sortedEntries
+            .where((entry) => entry.fetalSize != null)
+            .map((entry) {
+          return "${DateFormat('yyyy-MM-dd').format(entry.date)}: ${entry.fetalSizeDisplay}, Mood: ${entry.mood ?? 'N/A'}, Cravings: ${entry.cravings ?? 'N/A'}, Journal: ${entry.description.substring(0, entry.description.length > 50 ? 50 : entry.description.length)}${entry.description.length > 50 ? "..." : ""}";
+        }).toList();
 
-Here is their recent fetal growth and diary data (date, fetal size, mood, cravings, journal snippet):
-${formattedGrowthData.join('\n')}
+        prompt = """
+        You are an AI assistant for a pregnancy tracking app.
+        The user is currently in: $currentWeekStage ($currentTrimester).
 
-Based on this information, provide a short (1-2 sentences), encouraging, and relevant insight or piece of advice for the user related to their current stage or observed growth pattern.
-Focus on positive and general advice. Please alert if there is abnormal growth or development based on the data especially fetal size.
-Avoid making medical diagnoses or specific medical recommendations. Be empathetic and supportive.
-If there's not enough data or the data seems unusual for making a specific insight, provide a general encouraging message for their current pregnancy stage.
-Example Insight: "It's great that you're tracking your journey in $currentWeekStage! Remember to stay hydrated and listen to your body."
-Another Example: "Seeing your progress is wonderful! Many experience [common symptom for $currentWeekStage] around this time, so gentle walks can be beneficial if you're feeling up to it."
-""" ;
+        Here is their recent fetal growth and diary data (date, fetal size, mood, cravings, journal snippet):
+        ${formattedGrowthData.join('\n')}
 
-      // 3. Call Gemini API
+        Based on this information, provide a short (1-2 sentences), encouraging, and relevant insight or piece of advice for the user related to their current stage or observed growth pattern.
+        Focus on positive and general advice. Please alert if there is abnormal growth or development based on the data especially fetal size.
+        Avoid making medical diagnoses or specific medical recommendations. Be empathetic and supportive.
+        If there's not enough data or the data seems unusual for making a specific insight, provide a general encouraging message for their current pregnancy stage.
+        Example Insight: "It's great that you're tracking your journey in $currentWeekStage! Remember to stay hydrated and listen to your body."
+        Another Example: "Seeing your progress is wonderful! Many experience [common symptom for $currentWeekStage] around this time, so gentle walks can be beneficial if you're feeling up to it."
+        """;
+      } else { // GrowthScreenMode.baby
+        // --- Baby Mode Prompt ---
+        List<String> formattedBabyData = sortedEntries
+            .where((entry) => entry.height != null || entry.weight != null)
+            .map((entry) {
+              String data = DateFormat('yyyy-MM-dd').format(entry.date);
+              if (entry.height != null) data += ", Height: ${entry.heightDisplay}";
+              if (entry.weight != null) data += ", Weight: ${entry.weightDisplay}";
+              data += ", Notes: ${entry.description.substring(0, entry.description.length > 50 ? 50 : entry.description.length)}${entry.description.length > 50 ? "..." : ""}";
+              return data;
+        }).toList();
+
+        // We need a way to get baby's age for better insights. For now, we'll omit it or use a generic reference.
+        // String babyAgeReference = "your baby"; // Or derive from diary entries if possible
+
+        prompt = """
+        You are an AI assistant for a baby tracking app.
+        Here is the baby's recent growth data (date, height, weight, notes):
+        ${formattedBabyData.join('\n')}
+
+        Based on this information, provide a short (1-2 sentences), encouraging, and relevant insight about the baby's growth and development.
+        Consider patterns in height and weight. Offer general tips or positive affirmations. 
+        For example, if growth is steady, you can praise the tracking. If there are fluctuations, suggest general factors like growth spurts or feeding changes, but always advise consulting a pediatrician for concerns.
+        Avoid making medical diagnoses or specific medical recommendations. Be empathetic, supportive, and focus on general well-being. Tell some nutrition tips based on height, weight and date data.
+        If data is sparse, provide a general encouraging message about tracking baby's development.
+        Example Insight: "It's wonderful to see you tracking your baby's growth! Consistent tracking helps you observe their unique development journey."
+        Another Example (if data shows growth): "Your baby is growing steadily! Remember that every baby develops at their own pace. Keep up the great work with feeding and care."
+        """;
+      }
+
+      // 3. Call Gemini API (common part)
       final model = genai.GenerativeModel(
         model: 'gemini-1.5-flash-latest', // Using the latest flash model
         apiKey: _geminiApiKey,
@@ -334,6 +615,157 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
     }
   }
 
+  // New widget to display the score in a capsule
+  Widget _buildScoreDisplay() {
+    return Padding(
+      padding: const EdgeInsets.only(right: 12.0, top: 8.0, bottom: 8.0), // Add some padding
+      child: Chip(
+        avatar: Icon(Icons.star, color: Colors.amber, size: 18),
+        label: Text(
+          '$_userScore',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        backgroundColor: Color(0xFF78A0E5), // Theme color
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      ),
+    );
+  }
+
+  // Dialog to add a new profile
+  Future<void> _showAddProfileDialog() async {
+    final TextEditingController nameController = TextEditingController();
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: Text('Add New Profile', style: GoogleFonts.poppins()),
+          content: TextField(
+            controller: nameController,
+            decoration: InputDecoration(
+              hintText: 'E.g., Baby Leo, Pregnancy 2',
+              labelStyle: GoogleFonts.poppins(),
+            ),
+            autofocus: true,
+            style: GoogleFonts.poppins(),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancel', style: GoogleFonts.poppins()),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+            TextButton(
+              child: Text('Add', style: GoogleFonts.poppins()),
+              onPressed: () {
+                if (nameController.text.isNotEmpty) {
+                  final newProfile = UserProfile(
+                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    name: nameController.text,
+                  );
+                  setState(() {
+                    _profiles.add(newProfile);
+                    _currentProfileId = newProfile.id; // Switch to the new profile
+                    
+                    // Initialize data for the new profile
+                    _selectedMode = GrowthScreenMode.pregnancy; // Default mode
+                    _isCalendarExpanded = false; // Default calendar state
+                    _allDiaryEntries.clear(); // Clear any existing (global/previous profile) entries from state
+                    _addSampleEntries(); // Add sample entries for the new profile
+                    
+                    // AI insights will be fetched by _loadSavedData or explicitly after this
+                  });
+                  _saveData(); // Save the new profile list, current ID, and its initial data
+                  _fetchAndSetAiInsights(); // Fetch insights for the new profile immediately
+                  Navigator.of(dialogContext).pop();
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Profile name cannot be empty.', style: GoogleFonts.poppins())),
+                  );
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Method to show the points gained dialog
+  Future<void> _showPointsGainedDialog() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: true, // User can tap outside to dismiss
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+          elevation: 5,
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                )
+              ]
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 500),
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    return ScaleTransition(child: child, scale: animation);
+                  },
+                  child: Text(
+                    '🎉 +10 ⭐',
+                    key: ValueKey<int>(DateTime.now().millisecondsSinceEpoch), // Unique key to trigger animation
+                    style: GoogleFonts.poppins(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.amber[700],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  'Entry Saved!',
+                  style: GoogleFonts.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  "You've earned 10 points!",
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[700]),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF78A0E5),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                  ),
+                  child: Text('Awesome!', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w500)),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(); // Dismiss dialog
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _goToPreviousWeek() {
     setState(() {
       _selectedDiaryDate = _selectedDiaryDate.subtract(const Duration(days: 7));
@@ -367,15 +799,191 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
 
   @override
   Widget build(BuildContext context) {
+    developer.log("Building GrowthScreen. Profiles: ${_profiles.length}, CurrentID: $_currentProfileId, IsLoading: $_isLoading", name: "GrowthScreenBuild");
+    // Safely get the current profile, providing a fallback if needed.
+    UserProfile currentProfile = _profiles.firstWhere(
+      (p) => p.id == _currentProfileId,
+      orElse: () => _profiles.isNotEmpty 
+                   ? _profiles.first 
+                   : UserProfile(id: "default_fallback", name: "Profile"), // Fallback
+    );
+
+    // If current profile ID doesn't exist in the profiles list, correct it
+    if (_currentProfileId == null || 
+        (_profiles.isNotEmpty && !_profiles.any((p) => p.id == _currentProfileId))) {
+      // Safely update to a valid profile
+      _currentProfileId = _profiles.isNotEmpty ? _profiles.first.id : "default";
+      _saveData(); // Persist this correction
+    }
+
+    List<DropdownMenuItem<String>> profileDropdownItems = _profiles.map((profile) {
+      return DropdownMenuItem<String>(
+        value: profile.id,
+        child: Row(
+          children: [
+            Icon(Icons.child_care_outlined, size: 18, color: Colors.grey[700]),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                profile.name,
+                style: GoogleFonts.poppins(fontSize: 14),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
+
+    // Separate menu item for adding new profile
+    profileDropdownItems.add(
+      DropdownMenuItem<String>(
+        value: '__add_new__',
+        child: Row(
+          children: [
+            Icon(Icons.add_circle_outline, size: 18, color: Theme.of(context).primaryColor),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                'Add New Profile...',
+                style: GoogleFonts.poppins(fontSize: 14, color: Theme.of(context).primaryColor),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
           'Growth & Development',
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.bold,
+            fontSize: 20,
           ),
+          overflow: TextOverflow.ellipsis,
         ),
         backgroundColor: const Color(0xFFAFC9F8),
+        actions: [
+          // Profile Dropdown - Enhanced UI
+          if (_profiles.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2.0), // Minimal vertical padding
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 150, maxHeight: 40), // Increased height
+                padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 0), // Minimal horizontal padding
+                decoration: BoxDecoration(
+                  color: Color(0xFF78A0E5).withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center, // Center the content
+                  children: [
+                    Expanded(
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          isDense: true, // This makes the dropdown more compact
+                          isExpanded: true,
+                          value: _currentProfileId,
+                          icon: Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+                          selectedItemBuilder: (BuildContext context) {
+                            return _profiles.map<Widget>((UserProfile profile) {
+                              if (profile.id == _currentProfileId) {
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.all(4.0), // Added padding around the icon
+                                      child: Icon(Icons.child_care, color: Colors.white, size: 14),
+                                    ),
+                                    Flexible(
+                                      child: Text(
+                                        profile.name, 
+                                        style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 12),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            }).toList();
+                          },
+                          items: profileDropdownItems,
+                          onChanged: (String? selectedValue) {
+                            // Important: First check if we need to add new profile
+                            if (selectedValue == '__add_new__') {
+                              _showAddProfileDialog();
+                              return; // Exit early after showing dialog
+                            } 
+                            
+                            // Handle profile switching
+                            if (selectedValue != null && selectedValue != _currentProfileId) {
+                              final String newProfileIdToLoad = selectedValue;
+                              // _currentProfileId currently holds the ID of the profile whose data is loaded.
+
+                              setState(() { 
+                                _isLoading = true; // Show loading indicator immediately
+                              });
+
+                              // 1. Save the data for the currently active profile (_currentProfileId).
+                              //    _saveData() saves _allDiaryEntries and settings using the current _currentProfileId.
+                              //    It ALSO saves this _currentProfileId as 'current_profile_id' in prefs for now.
+                              _saveData().then((_) {
+                                // Data for the *old* profile is now saved.
+                                // 'current_profile_id' in prefs temporarily points to the *old* profile.
+
+                                if (mounted) {
+                                  // 2. Update the application's current profile ID state.
+                                  setState(() {
+                                    _currentProfileId = newProfileIdToLoad;
+                                    // At this point, _allDiaryEntries and other settings in memory might still be for the old profile,
+                                    // but _currentProfileId is now for the new one.
+                                  });
+
+                                  // 3. Persist the NEW profile ID as the "current" one in SharedPreferences.
+                                  //    This OVERWRITES the 'current_profile_id' set by the previous _saveData() call.
+                                  SharedPreferences.getInstance().then((prefs) {
+                                    prefs.setString('current_profile_id', newProfileIdToLoad).then((_) {
+                                      if (mounted) {
+                                        // 4. Load the data for the new profile.
+                                        //    _loadSavedData will read the 'current_profile_id' we just set (newProfileIdToLoad),
+                                        //    and then load the corresponding diary entries and settings.
+                                        _loadSavedData(); // This will eventually set _isLoading = false and refresh UI.
+                                      }
+                                    });
+                                  });
+                                }
+                              });
+                            }
+                          },
+                          dropdownColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                    if (_profiles.length > 1) // Only show delete if more than one profile
+                      Container(
+                        width: 28, // Fixed width for the delete button area
+                        child: IconButton(
+                          icon: Icon(Icons.delete_outline, size: 18, color: Colors.white.withOpacity(0.8)),
+                          padding: EdgeInsets.symmetric(horizontal: 0), // No horizontal padding
+                          constraints: const BoxConstraints(minWidth: 24, minHeight: 24), // Minimal size
+                          tooltip: 'Delete profile',
+                          onPressed: () {
+                            _showDeleteProfileConfirmationDialog(currentProfile);
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(width: 4),
+          _buildScoreDisplay(),
+        ],
       ),
       body: _isLoading 
           ? const Center(child: CircularProgressIndicator())
@@ -429,40 +1037,81 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
   }
 
   Widget _buildPregnancyModeContent() {
-    return DefaultTabController(
-      length: 2, // Updated to 2 tabs
-      child: Column(
-        children: [
-          TabBar(
-            labelColor: const Color(0xFF78A0E5),
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: const Color(0xFF78A0E5),
-            labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-            unselectedLabelStyle: GoogleFonts.poppins(),
-            isScrollable: true,
-            indicator: BoxDecoration(
-              color: Colors.transparent, // Make the indicator transparent
-              border: Border(
-                bottom: BorderSide(color: const Color(0xFF78A0E5), width: 2), // Custom indicator
-              ),
+    // return DefaultTabController( // Replaced with explicit controller
+    //   length: 2, 
+    //   child: Column(
+    return Column(
+      children: [
+        TabBar(
+          controller: _pregnancyTabController, // Use the explicit controller
+          labelColor: const Color(0xFF78A0E5),
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: const Color(0xFF78A0E5),
+          labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          unselectedLabelStyle: GoogleFonts.poppins(),
+          indicator: BoxDecoration(
+            color: Colors.transparent, 
+            border: Border(
+              bottom: BorderSide(color: const Color(0xFF78A0E5), width: 2), 
             ),
-            labelPadding: const EdgeInsets.symmetric(horizontal: 40), // Adjust padding for centering
-            tabs: const [
-              Tab(text: 'Fetal Growth'),
-              Tab(text: 'Bump Diary'),
+          ),
+          tabs: const [
+            Tab(text: 'Fetal Growth'),
+            Tab(text: 'Bump Diary'), 
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _pregnancyTabController, // Use the explicit controller
+            children: [
+              _buildFetalGrowthSection(),
+              _buildBumpDiarySection(),
             ],
           ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                _buildFetalGrowthSection(),
-                _buildBumpDiarySection(),
-              ],
+        ),
+      ],
+    );
+    //   ),
+    // );
+  }
+
+  Widget _buildBabyTrackerModeContent() {
+    // return DefaultTabController( // Replaced with explicit controller
+    //   length: 2, 
+    //   child: Column(
+    return Column(
+      children: [
+        TabBar(
+          controller: _babyTrackerTabController, // Use the explicit controller
+          labelColor: const Color(0xFF78A0E5),
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: const Color(0xFF78A0E5),
+          labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          unselectedLabelStyle: GoogleFonts.poppins(),
+          indicator: BoxDecoration(
+            color: Colors.transparent, 
+            border: Border(
+              bottom: BorderSide(color: const Color(0xFF78A0E5), width: 2), 
             ),
           ),
-        ],
-      ),
+          tabs: const [
+            Tab(text: 'Baby Growth'), 
+            Tab(text: 'Growth Diary'), 
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _babyTrackerTabController, // Use the explicit controller
+            children: [
+              _buildBabyGrowthChartsSection(),
+              _buildBumpDiarySection(),   
+            ],
+          ),
+        ),
+      ],
     );
+    //   ),
+    // );
   }
 
   Widget _buildFetalGrowthSection() {
@@ -753,15 +1402,19 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
             borderRadius: BorderRadius.circular(12),
             side: BorderSide(color: Colors.grey.shade200),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),            
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFAFC9F8), // Set the background color to match the title bar
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.all(16.0),
             child: _isFetchingAiInsights
                 ? const Center(child: CircularProgressIndicator())
                 : Text(
                     _aiInsightText ??
                         "AI insights will appear here. Add diary entries to get personalized tips.",
                     style: GoogleFonts.poppins(
-                        fontSize: 16, fontStyle: FontStyle.italic),                    
+                        fontSize: 16, fontStyle: FontStyle.italic),
                   ),
           ),
         ),
@@ -770,23 +1423,39 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
   }
 
   // Simple custom growth chart that doesn't rely on external packages
-  Widget _buildSimpleGrowthChart(List<DiaryEntry> entries) {
-    if (entries.isEmpty) return const SizedBox();
-
-    // Prepare data for the line chart
+  Widget _buildSimpleGrowthChart(List<DiaryEntry> allEntries) {
     List<FlSpot> spots = [];
-    for (var i = 0; i < entries.length; i++) {
-      var entry = entries[i];
-      double size = entry.fetalSize;
-      if (entry.fetalSizeUnit == FetalSizeUnit.inch) {
-        size = size * 2.54; // Convert to cm for consistency
+    List<DiaryEntry> chartableEntries = []; // To keep track of entries used for x-axis labels
+
+    for (var entry in allEntries) {
+      if (entry.fetalSize != null && entry.fetalSizeUnit != null) {
+        double size = entry.fetalSize!; // Safe due to check
+        if (entry.fetalSizeUnit == FetalSizeUnit.inch) { // entry.fetalSizeUnit is also non-null here
+          size = size * 2.54; // Convert to cm for consistency
+        }
+        spots.add(FlSpot(chartableEntries.length.toDouble(), size));
+        chartableEntries.add(entry);
       }
-      // Using index position instead of timestamp for x-axis for simpler display
-      spots.add(FlSpot(i.toDouble(), size));
     }
 
-    // Determine the maximum y value for the chart
-    double maxY = spots.isNotEmpty ? spots.map((spot) => spot.y).reduce((a, b) => a > b ? a : b) : 0;
+    if (spots.isEmpty) {
+      return Container(
+          height: 250, // Match chart height
+          alignment: Alignment.center,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.grey[200],
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            'No fetal growth data to display.\nAdd pregnancy diary entries with fetal size.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(color: Colors.grey[700]),
+          ),
+        );
+    }
+
+    double maxY = spots.map((spot) => spot.y).reduce((a, b) => a > b ? a : b);
 
     return SizedBox(
       height: 250, // Adjust height as needed
@@ -803,11 +1472,11 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 40,
-                interval: 1, // Show each integer value
+                interval: 1, 
                 getTitlesWidget: (value, meta) {
-                  // Check if the value is an integer and in range of our entries array
-                  if (value >= 0 && value < entries.length && value.toInt() == value) {
-                    DateTime date = entries[value.toInt()].date;
+                  final index = value.toInt();
+                  if (index >= 0 && index < chartableEntries.length) {
+                    DateTime date = chartableEntries[index].date;
                     return Padding(
                       padding: const EdgeInsets.only(top: 8.0),
                       child: Text(
@@ -816,16 +1485,17 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
                       ),
                     );
                   }
-                  return const SizedBox(); // Empty widget for non-data points
+                  return const SizedBox(); 
                 },
               ),
             ),
-            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)), // Hide top titles
-            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)), // Hide right titles
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)), 
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)), 
           ),
           borderData: FlBorderData(show: true, border: Border.all(color: const Color(0xFF78A0E5), width: 1)),
-          minX: -0.1, // Give a little space on the left
-          maxX: entries.length - 0.9, // Give space on the right
+          minX: -0.1, 
+          maxX: chartableEntries.isNotEmpty ? chartableEntries.length.toDouble() - (chartableEntries.length > 1 ? 0.9 : 0.1) : 0, // Handle empty chartableEntries
+          minY: 0,
           lineBarsData: [
             LineChartBarData(
               spots: spots,
@@ -834,7 +1504,7 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
               dotData: FlDotData(
                 show: true,
                 getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
-                  radius: 6, // Larger dots
+                  radius: 6, 
                   color: const Color(0xFF78A0E5),
                   strokeWidth: 1,
                   strokeColor: Colors.white,
@@ -843,7 +1513,7 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
               belowBarData: BarAreaData(show: false),
             ),
           ],
-          maxY: maxY + 2, // Set maxY to control the upper limit of the y-axis
+          maxY: maxY + 2, 
         ),
       ),
     );
@@ -919,24 +1589,25 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Pregnancy Stage Badge
-                                  Container(
-                                    margin: const EdgeInsets.only(bottom: 8.0),
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Color(0xFFAFC9F8).withOpacity(0.3),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: Color(0xFF78A0E5), width: 1),
-                                    ),
-                                    child: Text(
-                                      "${entry.pregnancyStage} (${_getTrimesterFromWeek(entry.pregnancyStage)})", // Display week and trimester
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 12, 
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF78A0E5),
+                                  // Pregnancy Stage Badge (Only for Pregnancy Mode)
+                                  if (_selectedMode == GrowthScreenMode.pregnancy && entry.pregnancyStage != null)
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 8.0),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Color(0xFFAFC9F8).withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Color(0xFF78A0E5), width: 1),
+                                      ),
+                                      child: Text(
+                                        "${entry.pregnancyStage} (${_getTrimesterFromWeek(entry.pregnancyStage!)})", // pregnancyStage is checked for null above
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12, 
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF78A0E5),
+                                        ),
                                       ),
                                     ),
-                                  ),
                                   
                                   if (entry.imagePath != null && entry.imagePath!.isNotEmpty)
                                     Container(
@@ -970,12 +1641,23 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
                                       ),
                                     ),
                                   if (entry.imagePath != null && entry.imagePath!.isNotEmpty) const SizedBox(height: 8),
-                                  Text(entry.journalEntry, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16)),
+                                  // Display Title (bold) and Description
+                                  Text(entry.title, style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 18)),
                                   const SizedBox(height: 4),
-                                  Text(
-                                    "Mood: ${entry.mood}\nCravings: ${entry.cravings}\nFetal Size: ${entry.fetalSizeDisplay}",
-                                    style: GoogleFonts.poppins(),
-                                  ),
+                                  Text(entry.description, style: GoogleFonts.poppins(fontSize: 14)),
+                                  const SizedBox(height: 8),
+                                  
+                                  // Conditional display of other details based on mode
+                                  if (_selectedMode == GrowthScreenMode.pregnancy)
+                                    Text(
+                                      "Mood: ${entry.mood ?? 'N/A'}\nCravings: ${entry.cravings ?? 'N/A'}\nFetal Size: ${entry.fetalSizeDisplay ?? 'N/A'}",
+                                      style: GoogleFonts.poppins(),
+                                    )
+                                  else if (_selectedMode == GrowthScreenMode.baby) 
+                                    Text(
+                                      "Height: ${entry.heightDisplay ?? 'N/A'}\nWeight: ${entry.weightDisplay ?? 'N/A'}",
+                                      style: GoogleFonts.poppins(),
+                                    ),
                                 ],
                               ),
                             ),
@@ -1194,16 +1876,22 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
   }
 
   void _showAddEntryDialog(BuildContext context) {
-    final journalController = TextEditingController();
-    final cravingsController = TextEditingController();
-    final moodController = TextEditingController();
-    final fetalSizeController = TextEditingController();
-    FetalSizeUnit selectedUnit = FetalSizeUnit.cm; // Default unit
-    String selectedPregnancyStage = "Week 12"; // Default stage to a week
+    // Initialize controllers and default values for the dialog
+    final titleController = TextEditingController(); // New
+    final descriptionController = TextEditingController(); // New
+
+    final cravingsController = TextEditingController(); // Only for pregnancy
+    final moodController = TextEditingController(); // Only for pregnancy
+    final fetalSizeController = TextEditingController(); // Only for pregnancy
+    final heightController = TextEditingController(); // Only for baby
+    final weightController = TextEditingController(); // Only for baby
+
+    FetalSizeUnit selectedFetalSizeUnit = FetalSizeUnit.cm; // Default for pregnancy
+    LengthUnit selectedHeightUnit = LengthUnit.cm; // Default for baby height
+    WeightUnit selectedWeightUnit = WeightUnit.kg; // Default for baby weight
+    String? selectedPregnancyStage = _selectedMode == GrowthScreenMode.pregnancy ? "Week 12" : null; // Default for pregnancy
     String? selectedImagePath;
     final ImagePicker picker = ImagePicker();
-
-    // List of pregnancy stages for dropdown (Weeks only)
     final List<String> pregnancyStages = List.generate(42, (index) => "Week ${index + 1}");
 
     showDialog(
@@ -1217,70 +1905,14 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    // Pregnancy Stage Dropdown
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 15.0),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade400),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            isExpanded: true,
-                            value: selectedPregnancyStage,
-                            hint: Text('Select Pregnancy Stage', style: GoogleFonts.poppins()),
-                            items: pregnancyStages.map((String stage) {
-                              return DropdownMenuItem<String>(
-                                value: stage,
-                                child: Text(stage, style: GoogleFonts.poppins()),
-                              );
-                            }).toList(),
-                            onChanged: (String? value) {
-                              if (value != null) {
-                                setDialogState(() {
-                                  selectedPregnancyStage = value;
-                                });
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                    
+                    // Common: Image Picker
                     if (selectedImagePath != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10.0),
                         child: Container(
                           height: 150,
                           width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: BorderRadius.circular(8.0),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8.0),
-                            child: Builder(
-                              builder: (context) {
-                                try {
-                                  final file = File(selectedImagePath!);
-                                  if (!file.existsSync()) {
-                                    return const Center(child: Text("Image file not found"));
-                                  }
-                                  return Image.file(
-                                    file,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return const Center(child: Text("Could not load image"));
-                                    },
-                                  );
-                                } catch (e) {
-                                  return Center(child: Text("Error: $e"));
-                                }
-                              },
-                            ),
-                          ),
+                          // ... (image display code)
                         ),
                       ),
                     ElevatedButton.icon(
@@ -1288,64 +1920,76 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
                       label: Text(selectedImagePath == null ? "Add Photo" : "Change Photo", style: GoogleFonts.poppins()),
                       onPressed: () async {
                         try {
-                          final XFile? image = await picker.pickImage(
-                            source: ImageSource.gallery,
-                            maxWidth: 1200,
-                            maxHeight: 1200,
-                            imageQuality: 85,
-                          );
+                          final XFile? image = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1200, maxHeight: 1200, imageQuality: 85);
                           if (image != null) {
-                            setDialogState(() {
-                              selectedImagePath = image.path;
-                            });
+                            setDialogState(() { selectedImagePath = image.path; });
                           }
                         } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text("Could not pick image: $e")),
-                            );
-                          }
+                          if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Could not pick image: $e"))); }
                         }
                       },
                       style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 40)),
                     ),
                     const SizedBox(height: 15),
+
+                    // Common: Title
                     TextField(
-                      controller: journalController,
-                      decoration: InputDecoration(labelText: "Journal Entry", hintText: "How are you feeling?", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
+                      controller: titleController,
+                      decoration: InputDecoration(labelText: "Title", hintText: "Enter a title for your entry", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
+                      style: GoogleFonts.poppins(),
+                    ),
+                    const SizedBox(height: 10),
+                    
+                    // Common: Description
+                    TextField(
+                      controller: descriptionController,
+                      decoration: InputDecoration(labelText: "Description", hintText: "How was the day? Any details...", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
                       maxLines: 3,
                       style: GoogleFonts.poppins(),
                     ),
                     const SizedBox(height: 10),
-                    TextField(
-                      controller: moodController,
-                      decoration: InputDecoration(labelText: "Mood", hintText: "e.g., Happy, Tired, Excited", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
-                      style: GoogleFonts.poppins(),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: cravingsController,
-                      decoration: InputDecoration(labelText: "Cravings", hintText: "e.g., Pickles, Chocolate", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
-                      style: GoogleFonts.poppins(),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+
+                    // Pregnancy Mode Specific Fields
+                    if (_selectedMode == GrowthScreenMode.pregnancy) ...[
+                      // Pregnancy Stage Dropdown
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 15.0),
+                        // ... (pregnancy stage dropdown code)
+                        child: DropdownButton<String>(
+                            isExpanded: true,
+                            value: selectedPregnancyStage,
+                            hint: Text('Select Pregnancy Stage', style: GoogleFonts.poppins()),
+                            items: pregnancyStages.map((String stage) {
+                              return DropdownMenuItem<String>(value: stage, child: Text(stage, style: GoogleFonts.poppins()));
+                            }).toList(),
+                            onChanged: (String? value) {
+                              if (value != null) { setDialogState(() { selectedPregnancyStage = value; }); }
+                            },
+                          ),
+                      ),
+                      TextField(
+                        controller: moodController,
+                        decoration: InputDecoration(labelText: "Mood", hintText: "e.g., Happy, Tired", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
+                        style: GoogleFonts.poppins(),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: cravingsController,
+                        decoration: InputDecoration(labelText: "Cravings", hintText: "e.g., Pickles, Chocolate", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
+                        style: GoogleFonts.poppins(),
+                      ),
+                      const SizedBox(height: 10),
+                      // Fetal Size
+                      Row(
+                        // ... (fetal size input and unit dropdown code)
+                        children: [
                         Expanded(
                           flex: 3,
                           child: TextField(
                             controller: fetalSizeController,
-                            decoration: InputDecoration(
-                              labelText: "Fetal Size",
-                              hintText: "Enter size",
-                              border: OutlineInputBorder(),
-                              labelStyle: GoogleFonts.poppins(),
-                            ),
+                            decoration: InputDecoration(labelText: "Fetal Size", hintText: "Enter size", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
                             keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')), // Allow numbers with up to 2 decimal places
-                            ],
+                            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
                             style: GoogleFonts.poppins(),
                           ),
                         ),
@@ -1354,100 +1998,168 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
                           flex: 2,
                           child: Container(
                             height: 59, // Match TextField height
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey.shade400),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
+                            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(4)),
                             child: Center(
                               child: DropdownButton<FetalSizeUnit>(
-                                value: selectedUnit,
-                                underline: Container(), // Remove default underline
-                                items: [
-                                  DropdownMenuItem(
-                                    value: FetalSizeUnit.cm,
-                                    child: Text('cm', style: GoogleFonts.poppins()),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: FetalSizeUnit.inch,
-                                    child: Text('inch', style: GoogleFonts.poppins()),
-                                  ),
-                                ],
+                                value: selectedFetalSizeUnit,
+                                underline: Container(),
+                                items: FetalSizeUnit.values.map((FetalSizeUnit unit) {
+                                  return DropdownMenuItem<FetalSizeUnit>(value: unit, child: Text(unit.name, style: GoogleFonts.poppins()));
+                                }).toList(),
                                 onChanged: (FetalSizeUnit? value) {
-                                  if (value != null) {
-                                    setDialogState(() {
-                                      selectedUnit = value;
-                                    });
-                                  }
+                                  if (value != null) { setDialogState(() { selectedFetalSizeUnit = value; }); }
                                 },
                               ),
                             ),
                           ),
                         ),
                       ],
-                    ),
+                      ),
+                    ],
+
+                    // Baby Tracker Mode Specific Fields
+                    if (_selectedMode == GrowthScreenMode.baby) ...[
+                      // Height
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: TextField(
+                              controller: heightController,
+                              decoration: InputDecoration(labelText: "Height", hintText: "Enter height", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+                              style: GoogleFonts.poppins(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: Container(
+                              height: 59, // Match TextField height
+                              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(4)),
+                              child: Center(
+                                child: DropdownButton<LengthUnit>(
+                                  value: selectedHeightUnit,
+                                  underline: Container(),
+                                  items: LengthUnit.values.map((LengthUnit unit) {
+                                    return DropdownMenuItem<LengthUnit>(value: unit, child: Text(unit.name, style: GoogleFonts.poppins()));
+                                  }).toList(),
+                                  onChanged: (LengthUnit? value) {
+                                    if (value != null) { setDialogState(() { selectedHeightUnit = value; }); }
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      // Weight
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: TextField(
+                              controller: weightController,
+                              decoration: InputDecoration(labelText: "Weight", hintText: "Enter weight", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+                              style: GoogleFonts.poppins(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: Container(
+                              height: 59, // Match TextField height
+                              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(4)),
+                              child: Center(
+                                child: DropdownButton<WeightUnit>(
+                                  value: selectedWeightUnit,
+                                  underline: Container(),
+                                  items: WeightUnit.values.map((WeightUnit unit) {
+                                    return DropdownMenuItem<WeightUnit>(value: unit, child: Text(unit.name, style: GoogleFonts.poppins()));
+                                  }).toList(),
+                                  onChanged: (WeightUnit? value) {
+                                    if (value != null) { setDialogState(() { selectedWeightUnit = value; }); }
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
               actions: <Widget>[
                 TextButton(
                   child: Text("Cancel", style: GoogleFonts.poppins()),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
+                  onPressed: () { Navigator.of(context).pop(); },
                 ),
                 ElevatedButton(
                   child: Text("Save Entry", style: GoogleFonts.poppins()),
                   onPressed: () {
-                    if (journalController.text.isNotEmpty) {
-                      // Parse fetal size value, default to 0.0 if empty or invalid
-                      double fetalSize = 0.0; // Ensure initialized as double
-                      if (fetalSizeController.text.isNotEmpty) {
-                        try {
-                          fetalSize = double.parse(fetalSizeController.text);
-                        } catch (e) {
-                          // Handle parsing error if the text is not a valid double
-                          if (context.mounted) { // Check if the widget is still in the tree
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text("Invalid number format for fetal size. Please enter a valid number.")),
-                            );
-                          }
-                          return; // Don't close dialog or proceed on error
-                        }
-                      }
-
-                      // Ensure _selectedDiaryDate is normalized to remove time components
-                      final DateTime entryDate = DateTime(
-                        _selectedDiaryDate.year,
-                        _selectedDiaryDate.month,
-                        _selectedDiaryDate.day,
-                      );
-
-                      setState(() {
-                        _allDiaryEntries.add(DiaryEntry(
-                          date: entryDate,
-                          imagePath: selectedImagePath,
-                          journalEntry: journalController.text,
-                          mood: moodController.text.isNotEmpty ? moodController.text : "Not specified",
-                          cravings: cravingsController.text.isNotEmpty ? cravingsController.text : "None",
-                          fetalSize: fetalSize, // fetalSize is now definitely a double
-                          fetalSizeUnit: selectedUnit,
-                          pregnancyStage: selectedPregnancyStage, // Add the selected pregnancy stage
-                        ));
-                        // Save to persist data
-                        _saveData();
-                        // Refresh AI insights
-                        _fetchAndSetAiInsights();
-                      });
-                      if (context.mounted) { // Check if the widget is still in the tree
-                        Navigator.of(context).pop();
-                      }
-                    } else {
-                      if (context.mounted) { // Check if the widget is still in the tree
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Journal entry cannot be empty!", style: GoogleFonts.poppins()))
-                        );
-                      }
+                    if (titleController.text.isEmpty) { // Check title instead
+                       if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Title cannot be empty!", style: GoogleFonts.poppins()))); }
+                       return;
                     }
+                    if (descriptionController.text.isEmpty) { // Also check description
+                       if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Description cannot be empty!", style: GoogleFonts.poppins()))); }
+                       return;
+                    }
+
+                    final DateTime entryDate = DateTime(_selectedDiaryDate.year, _selectedDiaryDate.month, _selectedDiaryDate.day);
+                    DiaryEntry newEntry;
+
+                    if (_selectedMode == GrowthScreenMode.pregnancy) {
+                      double fetalSize = 0.0;
+                      if (fetalSizeController.text.isNotEmpty) {
+                        try { fetalSize = double.parse(fetalSizeController.text); } catch (e) { /* Handle error or default */ }
+                      }
+                      newEntry = DiaryEntry(
+                        date: entryDate,
+                        imagePath: selectedImagePath,
+                        title: titleController.text,
+                        description: descriptionController.text,
+                        mood: moodController.text.isNotEmpty ? moodController.text : "Not specified",
+                        cravings: cravingsController.text.isNotEmpty ? cravingsController.text : "None",
+                        fetalSize: fetalSize,
+                        fetalSizeUnit: selectedFetalSizeUnit,
+                        pregnancyStage: selectedPregnancyStage,
+                      );
+                    } else { // Baby Mode
+                      double height = 0.0;
+                      if (heightController.text.isNotEmpty) {
+                        try { height = double.parse(heightController.text); } catch (e) { /* Handle error or default */ }
+                      }
+                      double weight = 0.0;
+                      if (weightController.text.isNotEmpty) {
+                        try { weight = double.parse(weightController.text); } catch (e) { /* Handle error or default */ }
+                      }
+                      newEntry = DiaryEntry(
+                        date: entryDate,
+                        imagePath: selectedImagePath,
+                        title: titleController.text,
+                        description: descriptionController.text,
+                        height: height,
+                        heightUnit: selectedHeightUnit,
+                        weight: weight,
+                        weightUnit: selectedWeightUnit,
+                      );
+                    }
+
+                    setState(() {
+                      _allDiaryEntries.add(newEntry);
+                      _userScore += 10;
+                      _saveData();
+                      _fetchAndSetAiInsights();
+                    });
+                    if (context.mounted) { Navigator.of(context).pop(); _showPointsGainedDialog(); }
                   },
                 ),
               ],
@@ -1458,35 +2170,201 @@ Another Example: "Seeing your progress is wonderful! Many experience [common sym
     );
   }
 
-  Widget _buildBabyTrackerModeContent() {
-    // Placeholder for Baby Tracker Mode content
-    return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildBabyGrowthChartsSection() {
+    // Filter entries that have height or weight data (typically from Baby mode)
+    final babyEntries = _allDiaryEntries.where((entry) => entry.height != null || entry.weight != null).toList();
+    babyEntries.sort((a, b) => a.date.compareTo(b.date));
+
+    List<FlSpot> heightSpots = [];
+    List<FlSpot> weightSpots = [];
+
+    for (var i = 0; i < babyEntries.length; i++) {
+      var entry = babyEntries[i];
+      if (entry.height != null) {
+        double heightValue = entry.height!;
+        if (entry.heightUnit == LengthUnit.inch) {
+          heightValue *= 2.54; // Convert to cm for consistency if needed, or decide on a display unit
+        }
+        heightSpots.add(FlSpot(i.toDouble(), heightValue));
+      }
+      if (entry.weight != null) {
+        double weightValue = entry.weight!;
+        if (entry.weightUnit == WeightUnit.lb) {
+          weightValue *= 0.453592; // Convert to kg for consistency if needed
+        }
+        weightSpots.add(FlSpot(i.toDouble(), weightValue));
+      }
+    }
+    
+    // Determine max Y values for charts
+    double maxHeightY = heightSpots.isNotEmpty ? heightSpots.map((spot) => spot.y).reduce((a,b) => a > b ? a : b) + 5 : 50;
+    double maxWeightY = weightSpots.isNotEmpty ? weightSpots.map((spot) => spot.y).reduce((a,b) => a > b ? a : b) + 2 : 10;
+
+    Widget buildChart(String title, List<FlSpot> spots, String yAxisLabel, double maxY, List<DiaryEntry> entriesForAxis) {
+      if (spots.isEmpty) {
+        return Container(
+          height: 200,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(12)),
+          child: Text('No $title data available.\nAdd entries in the Growth Diary.', textAlign: TextAlign.center, style: GoogleFonts.poppins(color: Colors.grey[600])),
+        );
+      }
+      return Container(
+        height: 280, // Adjusted height for individual charts
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), spreadRadius: 1, blurRadius: 5)],
+        ),
+        child: LineChart(
+          LineChartData(
+            gridData: FlGridData(show: false),
+            titlesData: FlTitlesData(
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (value, meta) {
+                  return Text('${value.toStringAsFixed(1)} $yAxisLabel', style: GoogleFonts.poppins(fontSize: 10));
+                }),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true, reservedSize: 40, interval: 1,
+                  getTitlesWidget: (value, meta) {
+                    if (value >= 0 && value < entriesForAxis.length && value.toInt() == value) {
+                      DateTime date = entriesForAxis[value.toInt()].date;
+                      return Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(DateFormat('dd/MM').format(date), style: GoogleFonts.poppins(fontSize: 10)));
+                    }
+                    return const SizedBox();
+                  },
+                ),
+              ),
+              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            ),
+            borderData: FlBorderData(show: true, border: Border.all(color: const Color(0xFF78A0E5), width: 1)),
+            minX: -0.1, maxX: spots.length.toDouble() - (spots.length > 1 ? 0.9 : 0.1),
+            minY: 0,
+            maxY: maxY,
+            lineBarsData: [
+              LineChartBarData(
+                spots: spots,
+                isCurved: true,
+                color: const Color(0xFF78A0E5),
+                dotData: FlDotData(
+                  show: true,
+                  getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 5, color: const Color(0xFF78A0E5), strokeWidth: 1, strokeColor: Colors.white),
+                ),
+                belowBarData: BarAreaData(show: false),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16.0),
+      children: [
+        Text('Height Growth Chart', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        buildChart('Height', heightSpots, 'cm', maxHeightY, babyEntries.where((e) => e.height != null).toList()), // Assuming cm display
+        const SizedBox(height: 24),
+        Text('Weight Growth Chart', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        buildChart('Weight', weightSpots, 'kg', maxWeightY, babyEntries.where((e) => e.weight != null).toList()), // Assuming kg display
+        const SizedBox(height: 24),
+
+        // Nutrition Suggestion Section
+        _buildNutritionSuggestionSection(),
+        const SizedBox(height: 20),
+
+        // AI Insights for Baby Growth
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-          const Icon(
-              Icons.child_care,
-              size: 100,
-              color: Color(0xFFAFC9F8),
-            ),
-          const SizedBox(height: 20),
             Text(
-            'Baby Tracker Mode Content',
-              style: GoogleFonts.poppins(
-              fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              'AI Growth Insights',
+              style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-          const SizedBox(height: 10),
-            Text(
-            '(Growth Charts, Milestones, Daily Diary, etc.)',
-            textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-              ),
+            IconButton(
+              icon: Icon(Icons.refresh, size: 20),
+              tooltip: 'Refresh AI insights',
+              onPressed: _isFetchingAiInsights ? null : _fetchAndSetAiInsights, // Reuses existing fetch and state
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.grey.shade200),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFAFC9F8), // Matching app theme
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.all(16.0),
+            child: _isFetchingAiInsights
+                ? const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.white)))
+                : Text(
+                    _aiInsightText ?? // Reuses existing AI insight text state
+                        "AI insights for your baby's growth will appear here. Add diary entries with height and weight to get personalized tips.",
+                    style: GoogleFonts.poppins(fontSize: 16, fontStyle: FontStyle.italic, color: Colors.black), // Changed color to black
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // New method for Nutrition Suggestion Section (Baby Tracker)
+  Widget _buildNutritionSuggestionSection() {
+    // TODO: Enhance with age-specific advice if baby's birth date becomes available.
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: Colors.grey.withOpacity(0.1), spreadRadius: 1, blurRadius: 5),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        title: Text(
+          'Baby Nutrition Tips 🍼',
+          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'General advice (customize as your baby grows):',
+                style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 5),
+              Text('• 0-6 Months: Exclusive breastfeeding is recommended. If formula feeding, use an appropriate infant formula.',
+                style: GoogleFonts.poppins(fontSize: 14),
+              ),
+              const SizedBox(height: 5),
+              Text('• 6+ Months: Introduce solid foods one at a time to check for allergies. Start with iron-fortified cereals, pureed fruits, and vegetables.',
+                style: GoogleFonts.poppins(fontSize: 14),
+              ),
+              const SizedBox(height: 5),
+              Text('• 9-12 Months: Offer a variety of textures and finger foods. Baby can start eating many of the same foods as the family (ensure they are soft and safely prepared).',
+                style: GoogleFonts.poppins(fontSize: 14),
+              ),
+              const SizedBox(height: 5),
+              Text('• Always consult your pediatrician for personalized nutrition advice.',
+                style: GoogleFonts.poppins(fontSize: 14, fontStyle: FontStyle.italic, color: Colors.deepPurpleAccent),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
