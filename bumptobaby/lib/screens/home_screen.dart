@@ -111,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return HealthSurveyScreen();
         }
       case 2:
-        return Center(child: Text('Baby Tracker Coming Soon')); // Baby Tracker
+        return GrowthDevelopmentScreen(); // Show Growth & Development Screen for Baby Tracker
       case 3:
         return HealthHelpPage(); // Health Help
       case 4:

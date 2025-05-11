@@ -9,6 +9,7 @@ import 'package:bumptobaby/screens/signup_screen.dart';
 import 'package:bumptobaby/screens/login_screen.dart';
 import 'package:bumptobaby/screens/home_screen.dart';
 import 'package:bumptobaby/screens/family_planning_screen.dart';
+import 'package:bumptobaby/screens/growth_development_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -180,7 +181,7 @@ class MySchedulePage extends StatelessWidget {
 class BabyTrackerPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Center(child: Text('Baby Tracker Page')); // Placeholder content
+    return GrowthDevelopmentScreen(); // Use Growth & Development screen for Baby Tracker
   }
 }
 
