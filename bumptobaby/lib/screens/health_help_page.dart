@@ -12,6 +12,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:image_picker/image_picker.dart'; // Import for image picking
 import 'package:url_launcher/url_launcher.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:google_fonts/google_fonts.dart';
 
 class HealthHelpPage extends StatefulWidget {
   const HealthHelpPage({super.key});
@@ -681,27 +682,40 @@ Adakah anda ingin membuka pautan ini?
               )
             : Row(
                 children: [
-                  const Text('Health Help', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF005792))),
+                  Text(
+                    'Health Help', 
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
                   const SizedBox(width: 8),
                   // Language dropdown
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
+                      border: Border.all(color: Colors.white.withOpacity(0.3)),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: DropdownButton<String>(
                       value: _selectedLanguage,
-                      icon: const Icon(Icons.arrow_drop_down, size: 18),
+                      icon: const Icon(Icons.arrow_drop_down, size: 18, color: Colors.white),
                       underline: Container(), // Remove the default underline
+                      dropdownColor: Color(0xFF1E6091),
                       items: _languages.map((String language) {
                         return DropdownMenuItem<String>(
                           value: language,
                           child: Row(
                             children: [
-                              const Icon(Icons.language, size: 18), // Language icon
+                              const Icon(Icons.language, size: 18, color: Colors.white), // Language icon
                               const SizedBox(width: 8), // Space between icon and text
-                              Text(language, style: const TextStyle(fontSize: 14)),
+                              Text(
+                                language, 
+                                style: const TextStyle(
+                                  fontSize: 14, 
+                                  color: Colors.white
+                                )
+                              ),
                             ],
                           ),
                         );
@@ -730,23 +744,14 @@ Adakah anda ingin membuka pautan ini?
                   ),
                 ],
               ),
-        backgroundColor: Colors.white,
-        // elevation: 2, // Add some elevation for a shadow effect
-        centerTitle: false,
+        backgroundColor: Color(0xFF1E6091),
         actions: [
           IconButton(
             icon: Icon(_isSearching ? Icons.close : Icons.search),
             onPressed: _toggleSearch,
-            color: const Color(0xFF005792),
+            color: Colors.white,
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(
-            color: Colors.grey.shade200,
-            height: 1.0,
-          ),
-        ),
       ),
       body: Column(
         children: [
@@ -764,15 +769,15 @@ Adakah anda ingin membuka pautan ini?
                       children: [
                         Text(
                           'Chat with our AI Assistant',
-                          style: TextStyle(
+                          style: GoogleFonts.poppins(
                               fontSize: 18.0,
                               fontWeight: FontWeight.bold,
-                              color: Colors.brown[700]),
+                              color: Color(0xFF1E6091)),
                         ),
                         const SizedBox(height: 2.0),
-                        const Text(
+                        Text(
                           '• Online',
-                          style: TextStyle(
+                          style: GoogleFonts.poppins(
                             fontSize: 12.0,
                             color: Colors.green,
                             fontWeight: FontWeight.bold,
@@ -782,9 +787,42 @@ Adakah anda ingin membuka pautan ini?
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.delete_outline, color: Colors.red[700]),
+                    icon: Icon(Icons.delete_outline, color: Color(0xFF1E6091)),
                     tooltip: 'Clear Chat',
                     onPressed: _clearChat,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Disclaimer container
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 8.0),
+            child: Container(
+              padding: const EdgeInsets.all(12.0),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Disclaimer:',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13.0,
+                      color: Color(0xFF1E6091),
+                    ),
+                  ),
+                  SizedBox(height: 4.0),
+                  Text(
+                    'This chatbot is for informational purposes only and does not replace professional medical advice, diagnosis, or treatment. Always consult your doctor, midwife, or other qualified health provider with any questions you may have about your pregnancy or a medical condition.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.0,
+                      color: Colors.grey[800],
+                    ),
                   ),
                 ],
               ),
@@ -840,7 +878,7 @@ Adakah anda ingin membuka pautan ini?
                 IconButton(
                   icon: const Icon(Icons.camera_alt_outlined),
                   onPressed: _showImageSourceDialog,
-                  color: Colors.blueGrey[700],
+                  color: Color(0xFF1E6091),
                 ),
                 Expanded(
                   child: Focus(
@@ -856,8 +894,9 @@ Adakah anda ingin membuka pautan ini?
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12.0),
                       decoration: BoxDecoration(
-                        color: Colors.lightBlue[50], // Input field background
+                        color: Colors.grey[100], // Input field background
                         borderRadius: BorderRadius.circular(25.0),
+                        border: Border.all(color: Colors.grey[300]!),
                       ),
                       child: TextField(
                         controller: _textController,
@@ -866,7 +905,9 @@ Adakah anda ingin membuka pautan ini?
                               ? 'Listening...' 
                               : 'Type your message here...',
                           border: InputBorder.none,
+                          hintStyle: GoogleFonts.poppins(color: Colors.grey[500]),
                         ),
+                        style: GoogleFonts.poppins(),
                         keyboardType: TextInputType.multiline,
                         maxLines: 3, // Limit to 3 lines
                         minLines: 1, // Starts as a single line
@@ -879,14 +920,14 @@ Adakah anda ingin membuka pautan ini?
                 IconButton(
                   icon: Icon(
                     _isListening ? Icons.mic : Icons.mic_none_outlined,
-                    color: _isListening ? Colors.red : Colors.blueGrey[700],
+                    color: _isListening ? Colors.red : Color(0xFF1E6091),
                   ),
                   onPressed: _startListening,
                 ),
                 IconButton(
                   icon: const Icon(Icons.send_outlined),
                   onPressed: _handleSendMessage, // Use the new handler
-                  color: Colors.blue[600],
+                  color: Color(0xFF1E6091),
                 ),
               ],
             ),
@@ -919,7 +960,7 @@ Adakah anda ingin membuka pautan ini?
         messageContent = Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text(text),
+            Text(text, style: GoogleFonts.poppins()),
             const SizedBox(height: 8),
             GestureDetector(
               onTap: () {
@@ -948,7 +989,7 @@ Adakah anda ingin membuka pautan ini?
           ],
         );
       } else {
-        messageContent = Text(text);
+        messageContent = Text(text, style: GoogleFonts.poppins());
       }
     } else {
       messageContent = MarkdownBody(
@@ -963,6 +1004,14 @@ Adakah anda ingin membuka pautan ini?
             }
           }
         },
+        styleSheet: MarkdownStyleSheet(
+          p: GoogleFonts.poppins(),
+          h1: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+          h2: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+          h3: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+          strong: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+          em: GoogleFonts.poppins(fontStyle: FontStyle.italic),
+        ),
       );
     }
 
@@ -972,7 +1021,7 @@ Adakah anda ingin membuka pautan ini?
         margin: const EdgeInsets.symmetric(vertical: 5.0, horizontal: 8.0),
         padding: const EdgeInsets.all(12.0),
         decoration: BoxDecoration(
-          color: isUser ? Colors.lightBlue[100] : Colors.red[100],
+          color: isUser ? Colors.lightBlue[100] : Color(0xFFEBF2FA),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(15.0),
             topRight: const Radius.circular(15.0),
@@ -981,6 +1030,14 @@ Adakah anda ingin membuka pautan ini?
             bottomRight:
                 isUser ? const Radius.circular(0) : const Radius.circular(15.0),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 3,
+              offset: Offset(0, 1),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment:
@@ -993,11 +1050,11 @@ Adakah anda ingin membuka pautan ini?
               children: [
                 Text(
                   time,
-                  style: const TextStyle(fontSize: 10.0, color: Colors.grey),
+                  style: GoogleFonts.poppins(fontSize: 10.0, color: Colors.grey),
                 ),
                 if (isUser) ...[
                   const SizedBox(width: 3.0),
-                  const Icon(Icons.done_all, size: 14.0, color: Colors.blue)
+                  const Icon(Icons.done_all, size: 14.0, color: Color(0xFF1E6091))
                 ],
                 if (!isUser) ...[
                   IconButton(
@@ -1006,7 +1063,7 @@ Adakah anda ingin membuka pautan ini?
                           ? Icons.pause
                           : Icons.volume_up,
                       size: 18.0,
-                      color: Colors.blue,
+                      color: Color(0xFF1E6091),
                     ),
                     tooltip: _isSpeaking && _currentlyPlayingMessageId == messageId
                         ? 'Stop speaking'
@@ -1067,18 +1124,25 @@ class _AnimatedLoadingIndicatorState extends State<AnimatedLoadingIndicator> {
         margin: const EdgeInsets.symmetric(vertical: 5.0, horizontal: 8.0),
         padding: const EdgeInsets.all(12.0),
         decoration: BoxDecoration(
-          color: Colors.red[100],
+          color: Color(0xFFEBF2FA),
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(15.0),
             topRight: Radius.circular(15.0),
             bottomLeft: Radius.circular(0),
             bottomRight: Radius.circular(15.0),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 3,
+              offset: Offset(0, 1),
+            ),
+          ],
         ),
         child: Text(
           '[$loadingTextContent]',
-          style: const TextStyle(
-            fontFamily: 'monospace',
+          style: GoogleFonts.poppins(
             color: Colors.black87,
           ),
         ),
