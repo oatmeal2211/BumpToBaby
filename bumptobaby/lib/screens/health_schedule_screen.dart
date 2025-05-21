@@ -20,6 +20,7 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
   final HealthScheduleService _healthScheduleService = HealthScheduleService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   bool _isSaving = false;
+  bool _isLoading = false;
   late TabController _tabController;
   
   // Define the categories in the order we want them
@@ -28,8 +29,24 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
   @override
   void initState() {
     super.initState();
+    // Create a copy of the items to avoid modifying the original list
     _items = List.from(widget.schedule.items);
     _tabController = TabController(length: _categories.length, vsync: this);
+    
+    // Delay initialization to avoid UI freezes
+    Future.microtask(() {
+      _initializeItems();
+    });
+  }
+  
+  // Initialize items in a separate method to avoid UI freezes
+  void _initializeItems() {
+    // Sort items by date for better organization
+    _items.sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
+    
+    if (mounted) {
+      setState(() {});
+    }
   }
   
   @override
@@ -290,16 +307,30 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
   }
 
   Widget _buildCategoryList(String category) {
+    // Filter items by category
     final categoryItems = _items.where((item) => item.category == category).toList();
     
     if (categoryItems.isEmpty) {
-      return _buildEmptyCategoryState(category);
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Text(
+            'No ${category.toLowerCase()} items found',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              color: Colors.grey[600],
+            ),
+          ),
+        ),
+      );
     }
     
     return ListView.builder(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      // Use ListView.builder for better performance
       itemCount: categoryItems.length,
       itemBuilder: (context, index) {
+        // Only build visible items
         return _buildScheduleItem(categoryItems[index]);
       },
     );
@@ -352,17 +383,20 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
 
   // Refresh the schedule after updating the survey
   Future<void> _refreshSchedule() async {
+    if (_isLoading) return;
+    
     final user = _auth.currentUser;
     if (user != null) {
       setState(() {
-        _isSaving = true;
+        _isLoading = true;
       });
       
       try {
         final updatedSchedule = await _healthScheduleService.getLatestHealthSchedule(user.uid);
-        if (updatedSchedule != null) {
+        if (updatedSchedule != null && mounted) {
           setState(() {
             _items = updatedSchedule.items;
+            _initializeItems();
           });
           
           // Show success message
@@ -383,20 +417,24 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
           );
         }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to refresh schedule: ${e.toString()}'),
-            backgroundColor: Colors.red[600],
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to refresh schedule: ${e.toString()}'),
+              backgroundColor: Colors.red[600],
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-          ),
-        );
+          );
+        }
       } finally {
-        setState(() {
-          _isSaving = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     }
   }
