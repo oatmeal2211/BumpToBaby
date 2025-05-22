@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:bumptobaby/screens/nearest_clinic_screen.dart';
 
 class ChatAction {
   final String label;
@@ -35,19 +36,28 @@ class ChatAction {
 class ChatActionHandler {
   static void handleAction(BuildContext context, ChatAction action) {
     try {
-      // Pop the current route if it's the same as the target route
+      // Check if this is a component route
+      if (action.arguments?['useComponent'] == true) {
+        if (action.arguments?['component'] == 'NearestClinicMapScreen') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => NearestClinicMapScreen()),
+          );
+          return;
+        }
+      }
+
+      // For other routes, use named routing
       if (ModalRoute.of(context)?.settings.name == action.route) {
         return;
       }
 
-      // Use Navigator 2.0 style navigation with error handling
       Navigator.of(context).pushNamed(
         action.route,
         arguments: action.arguments,
       ).then((value) {
         // Handle navigation result if needed
       }).catchError((error) {
-        // Show error snackbar if navigation fails
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Could not navigate to ${action.label}'),
@@ -56,7 +66,6 @@ class ChatActionHandler {
         );
       });
     } catch (e) {
-      // Show error snackbar for any other errors
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Navigation error: $e'),
@@ -97,9 +106,13 @@ class ChatActionHandler {
 
   static ChatAction nearestClinic = ChatAction(
     label: "Find Nearest Clinic",
-    route: '/nearest_clinic',
+    route: 'nearest_clinic_map_screen',
     icon: Icons.local_hospital,
-    arguments: {'source': 'chatbot'},
+    arguments: {
+      'source': 'chatbot',
+      'useComponent': true,  // Flag to indicate this should use component routing
+      'component': 'NearestClinicMapScreen'
+    },
   );
 
   static ChatAction community = ChatAction(
