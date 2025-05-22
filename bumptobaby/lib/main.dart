@@ -16,7 +16,8 @@ import 'package:bumptobaby/screens/growth_development_screen.dart';
 import 'package:bumptobaby/screens/nutrition_meals_screen.dart';
 import 'package:bumptobaby/screens/smart_health_tracker_screen.dart';
 import 'package:bumptobaby/screens/nearest_clinic_screen.dart';
-
+import 'package:bumptobaby/screens/community_screen.dart';
+import 'package:bumptobaby/screens/audio_visual_learning_screen.dart';
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
@@ -127,7 +128,9 @@ class _MyAppState extends State<MyApp> {
         '/growth_development_screen': (context) => GrowthDevelopmentScreen(),
         '/nutrition_meals': (context) => NutritionMealsScreen(),
         '/smart_health_tracker': (context) => SmartHealthTrackerScreen(),
-        '/nearest_clinic': (context) => NearestClinicScreen(),
+        '/nearest_clinic': (context) => NearestClinicMapScreen(),
+        '/community': (context) => CommunityScreen(),
+        '/learning_resources': (context) => AudioVisualLearningScreen(),
       },
     );
   }
@@ -339,12 +342,4 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
-class NearestClinicScreen extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Nearest Clinic')),
-      body: Center(child: Text('Nearest Clinic Information')),
-    );
-  }
-}
+
