@@ -24,7 +24,7 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
   late TabController _tabController;
   
   // Define the categories in the order we want them
-  final List<String> _categories = ['checkup', 'vaccine', 'milestone', 'supplement'];
+  final List<String> _categories = ['checkup', 'vaccine', 'milestone', 'supplement', 'risk_alert', 'prediction'];
   
   @override
   void initState() {
@@ -180,6 +180,8 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
                         _buildTab('Vaccines', Icons.vaccines_rounded),
                         _buildTab('Milestones', Icons.emoji_events_rounded),
                         _buildTab('Supplements', Icons.medication_rounded),
+                        _buildTab('Risk Alerts', Icons.warning_rounded),
+                        _buildTab('Predictions', Icons.lightbulb_rounded),
                       ],
                       isScrollable: true,
                       padding: EdgeInsets.symmetric(horizontal: 16),
@@ -311,18 +313,7 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
     final categoryItems = _items.where((item) => item.category == category).toList();
     
     if (categoryItems.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Text(
-            'No ${category.toLowerCase()} items found',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              color: Colors.grey[600],
-            ),
-          ),
-        ),
-      );
+      return _buildEmptyCategoryState(category);
     }
     
     return ListView.builder(
@@ -356,6 +347,14 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
       case 'supplement':
         message = 'No supplements scheduled';
         icon = Icons.medication_rounded;
+        break;
+      case 'risk_alert':
+        message = 'No risk alerts';
+        icon = Icons.warning_rounded;
+        break;
+      case 'prediction':
+        message = 'No predictions available';
+        icon = Icons.lightbulb_rounded;
         break;
       default:
         message = 'No items scheduled';
@@ -450,6 +449,21 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
       statusColor = Colors.green[600]!;
     } else if (isToday) {
       statusColor = Colors.orange[600]!;
+    } else if (item.category == 'risk_alert') {
+      // Use severity color for risk alerts
+      switch (item.severity?.toLowerCase() ?? 'medium') {
+        case 'high':
+          statusColor = Colors.red[700]!;
+          break;
+        case 'medium':
+          statusColor = Colors.orange[700]!;
+          break;
+        case 'low':
+          statusColor = Colors.yellow[700]!;
+          break;
+        default:
+          statusColor = Colors.orange[600]!;
+      }
     } else {
       statusColor = Colors.blue[600]!;
     }
@@ -459,6 +473,10 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
       statusText = 'Completed';
     } else if (isToday) {
       statusText = 'Today';
+    } else if (item.category == 'risk_alert' && item.severity != null) {
+      statusText = '${item.severity} Risk';
+    } else if (item.category == 'prediction') {
+      statusText = 'Prediction';
     } else {
       statusText = 'Upcoming';
     }
@@ -477,8 +495,9 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
           ),
         ],
         border: Border.all(
-          color: item.isCompleted ? Colors.green.withOpacity(0.3) : Colors.transparent,
-          width: item.isCompleted ? 1.5 : 0,
+          color: item.isCompleted ? Colors.green.withOpacity(0.3) : 
+                 item.category == 'risk_alert' ? statusColor.withOpacity(0.3) : Colors.transparent,
+          width: (item.isCompleted || item.category == 'risk_alert') ? 1.5 : 0,
         ),
       ),
       child: ClipRRect(
@@ -494,6 +513,12 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
                 children: [
                   Row(
                     children: [
+                      Icon(
+                        _getCategoryIcon(item.category),
+                        color: _getCategoryColor(item.category),
+                        size: 20,
+                      ),
+                      SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           item.title,
@@ -504,17 +529,18 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
                           ),
                         ),
                       ),
-                      Transform.scale(
-                        scale: 1.2,
-                        child: Checkbox(
-                          value: item.isCompleted,
-                          activeColor: Colors.green[600],
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
+                      if (item.category != 'risk_alert' && item.category != 'prediction')
+                        Transform.scale(
+                          scale: 1.2,
+                          child: Checkbox(
+                            value: item.isCompleted,
+                            activeColor: Colors.green[600],
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            onChanged: (_) => _toggleItemCompletion(item),
                           ),
-                          onChanged: (_) => _toggleItemCompletion(item),
                         ),
-                      ),
                     ],
                   ),
                   SizedBox(height: 8),
@@ -600,6 +626,23 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
                       color: _getCategoryColor(item.category),
                     ),
                   ),
+                  if (item.category == 'risk_alert' && item.severity != null)
+                    Container(
+                      margin: EdgeInsets.only(left: 8),
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: _getSeverityColor(item.severity!).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        item.severity!,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _getSeverityColor(item.severity!),
+                        ),
+                      ),
+                    ),
                   Spacer(),
                   IconButton(
                     icon: Icon(Icons.close),
@@ -641,31 +684,67 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
                   ),
                 ],
               ),
-              SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    _toggleItemCompletion(item);
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: item.isCompleted ? Colors.grey[200] : Color(0xFFF8AFAF),
-                    padding: EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+              // Display additional data if available
+              if (item.additionalData != null && item.additionalData!.isNotEmpty) ...[
+                SizedBox(height: 24),
+                Text(
+                  'Additional Information:',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
-                  child: Text(
-                    item.isCompleted ? 'Mark as Incomplete' : 'Mark as Completed',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: item.isCompleted ? Colors.black87 : Colors.white,
+                ),
+                SizedBox(height: 8),
+                ...item.additionalData!.entries.map((entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '• ${entry.key}: ',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          entry.value.toString(),
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+              ],
+              SizedBox(height: 32),
+              if (item.category != 'risk_alert' && item.category != 'prediction')
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      _toggleItemCompletion(item);
+                      Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: item.isCompleted ? Colors.grey[200] : Color(0xFFF8AFAF),
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      item.isCompleted ? 'Mark as Incomplete' : 'Mark as Completed',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: item.isCompleted ? Colors.black87 : Colors.white,
+                      ),
                     ),
                   ),
                 ),
-              ),
               SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
             ],
           ),
@@ -729,6 +808,10 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
         return Icons.emoji_events_rounded;
       case 'supplement':
         return Icons.medication_rounded;
+      case 'risk_alert':
+        return Icons.warning_rounded;
+      case 'prediction':
+        return Icons.lightbulb_rounded;
       default:
         return Icons.calendar_today_rounded;
     }
@@ -744,6 +827,10 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
         return 'Milestone';
       case 'supplement':
         return 'Supplement';
+      case 'risk_alert':
+        return 'Risk Alert';
+      case 'prediction':
+        return 'Prediction';
       default:
         return category[0].toUpperCase() + category.substring(1);
     }
@@ -759,8 +846,26 @@ class _HealthScheduleScreenState extends State<HealthScheduleScreen> with Single
         return Color(0xFF9575CD); // Purple
       case 'supplement':
         return Color(0xFFFF9800); // Orange
+      case 'risk_alert':
+        return Color(0xFFE53935); // Red
+      case 'prediction':
+        return Color(0xFF00BCD4); // Cyan
       default:
         return Color(0xFF78909C); // Grey
+    }
+  }
+
+  // Get color based on severity
+  Color _getSeverityColor(String severity) {
+    switch (severity.toLowerCase()) {
+      case 'high':
+        return Colors.red[700]!;
+      case 'medium':
+        return Colors.orange[700]!;
+      case 'low':
+        return Colors.yellow[700]!;
+      default:
+        return Colors.orange[600]!;
     }
   }
 }

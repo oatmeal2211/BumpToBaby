@@ -74,6 +74,25 @@ class PlacesService {
       throw Exception('Error fetching combined clinics: $e');
     }
   }
+  
+  Future<List<dynamic>> findPharmacies(Position position, {double radius = 3000}) async {
+    final pharmacyUrl = Uri.parse(
+      'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+      '?location=${position.latitude},${position.longitude}'
+      '&radius=$radius'
+      '&type=pharmacy'
+      '&key=$apiKey',
+    );
+
+    try {
+      final pharmacyResults = await _fetchAllPages(pharmacyUrl, category: 'pharmacy');
+      print('Pharmacy API call successful: ${pharmacyResults.length} results');
+      return pharmacyResults;
+    } catch (e) {
+      print('Error in findPharmacies(): $e');
+      throw Exception('Error fetching pharmacies: $e');
+    }
+  }
 
   Future<List<dynamic>> _fetchAllPages(Uri url, {required String category}) async {
     List<dynamic> allResults = [];
@@ -115,11 +134,12 @@ class PlacesService {
     return allResults;
   }
 
-  Future<Map<String, dynamic>> getClinicDetails(String placeId) async {
+  // Renamed from getClinicDetails to getPlaceDetails for broader use
+  Future<Map<String, dynamic>> getPlaceDetails(String placeId) async {
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/place/details/json'
       '?place_id=$placeId'
-      '&fields=name,formatted_address,formatted_phone_number,opening_hours,website,geometry,rating'
+      '&fields=name,formatted_address,formatted_phone_number,opening_hours,website,geometry,rating,types,photos'
       '&key=$apiKey',
     );
 
@@ -135,11 +155,16 @@ class PlacesService {
         print('Details API call successful.');
         return jsonResponse['result'];
       } else {
-        throw Exception('Failed to fetch clinic details. Status code: ${response.statusCode}');
+        throw Exception('Failed to fetch place details. Status code: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error in getClinicDetails(): $e');
-      throw Exception('Error fetching clinic details: $e');
+      print('Error in getPlaceDetails(): $e');
+      throw Exception('Error fetching place details: $e');
     }
+  }
+  
+  // Keep the old method for backward compatibility
+  Future<Map<String, dynamic>> getClinicDetails(String placeId) async {
+    return getPlaceDetails(placeId);
   }
 }
