@@ -13,6 +13,9 @@ import 'package:bumptobaby/screens/login_screen.dart';
 import 'package:bumptobaby/screens/home_screen.dart';
 import 'package:bumptobaby/screens/family_planning_screen.dart';
 import 'package:bumptobaby/screens/growth_development_screen.dart';
+import 'package:bumptobaby/screens/nutrition_meals_screen.dart';
+import 'package:bumptobaby/screens/smart_health_tracker_screen.dart';
+import 'package:bumptobaby/screens/nearest_clinic_screen.dart';
 
 void main() async {
   try {
@@ -121,6 +124,10 @@ class _MyAppState extends State<MyApp> {
         '/signup': (context) => SignUpScreen(),
         '/home': (context) => HomeScreen(username: 'User'),
         '/family_planning': (context) => FamilyPlanningScreen(),
+        '/growth_development_screen': (context) => GrowthDevelopmentScreen(),
+        '/nutrition_meals': (context) => NutritionMealsScreen(),
+        '/smart_health_tracker': (context) => SmartHealthTrackerScreen(),
+        '/nearest_clinic': (context) => NearestClinicScreen(),
       },
     );
   }
@@ -328,6 +335,16 @@ class _MyHomePageState extends State<MyHomePage> {
         tooltip: 'Increment',
         child: const Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+}
+
+class NearestClinicScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Nearest Clinic')),
+      body: Center(child: Text('Nearest Clinic Information')),
     );
   }
 }

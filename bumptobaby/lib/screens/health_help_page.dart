@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart'; // Import for image picking
 import 'package:url_launcher/url_launcher.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:bumptobaby/utils/chat_actions.dart';
 
 class HealthHelpPage extends StatefulWidget {
   const HealthHelpPage({super.key});
@@ -77,6 +78,30 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isListening = false;
 
+  // Add suggestion questions
+  final List<String> _initialSuggestions = [
+    "What are common pregnancy symptoms?",
+    "How to track my baby's growth?",
+    "What foods should I avoid during pregnancy?",
+    "When should I see a doctor?"
+  ];
+
+  // Add initial greeting messages by language
+  final Map<String, String> _greetingsByLanguage = {
+    'English': """Hello! 👋 I'm your pregnancy companion, here to help you with any questions about your pregnancy journey.
+
+Here are some questions you might want to ask:""",
+    'Malay': """Hai! 👋 Saya adalah rakan kehamilan anda, di sini untuk membantu anda dengan sebarang soalan tentang perjalanan kehamilan anda.
+
+Berikut adalah beberapa soalan yang mungkin ingin anda tanyakan:""",
+    'Chinese': """你好！👋 我是您的妊娠伴侣，在这里帮助您解答关于妊娠旅程的任何问题。
+
+以下是一些您可能想问的问题：""",
+    'Tamil': """வணக்கம்! 👋 நான் உங்கள் கர்ப்பகால துணை, உங்கள் கர்ப்பகால பயணம் பற்றிய எந்த கேள்விகளுக்கும் உதவ இங்கே இருக்கிறேன்.
+
+நீங்கள் கேட்க விரும்பக்கூடிய சில கேள்விகள் இங்கே:"""
+  };
+
   @override
   void initState() {
     super.initState();
@@ -86,13 +111,11 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
         print("API Key not found. Make sure your .env file is set up correctly.");
       }
     }
-    _loadMessages(); // Load messages when the widget initializes
-    _loadLanguagePreference(); // Load language preference
+    _loadMessages();
+    _loadLanguagePreference();
     
-    // Initialize speech recognition
     _initSpeech();
     
-    // Set up TTS completion listener
     _flutterTts.setCompletionHandler(() {
       if (mounted) {
         setState(() {
@@ -102,8 +125,14 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
       }
     });
     
-    // Initialize filtered messages with all messages
     _filteredMessages = List.from(_messages);
+
+    // Add initial greeting after a short delay only if there are no messages
+    Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && _messages.isEmpty) { // Check if there are no chat messages
+            _sendInitialGreeting();
+        }
+    });
   }
 
   @override
@@ -360,23 +389,114 @@ Adakah anda ingin membuka pautan ini?
     setState(() {
       _messages.insert(0, userMsg);
       _messages.insert(0, loadingMsg);
-      _filteredMessages = List.from(_messages); // Update filtered messages
+      _filteredMessages = List.from(_messages);
       _isLoading = true;
     });
-    await _saveMessages(); // Save after adding user message and placeholder
+    await _saveMessages();
 
     String botResponse = "Sorry, something went wrong while getting a response.";
+    List<ChatAction>? actions;
+
     try {
-      // Limit the context to the last 5 messages
-      final limitedMessages = _messages.take(10).toList(); // Get the last 10 messages
+      final limitedMessages = _messages.take(10).toList();
       final fullPrompt = "$_systemPrompt\n\n${limitedMessages.map((msg) => msg['text']).join('\n')}\nUser: $userMessageText\nAI:";
 
-      // Print the concatenated message to the debug console
       if (kDebugMode) {
         print("Sending to Gemini API: $fullPrompt");
       }
 
       botResponse = await _callGeminiApi(userMessageText);
+      
+      // Create a set to avoid duplicate actions
+      final Set<ChatAction> actionSet = {};
+      
+      // Check for keywords and add relevant actions
+      final response = botResponse.toLowerCase();
+      
+      if (response.contains("growth") || 
+          response.contains("weight") ||
+          response.contains("height") ||
+          response.contains("measurement") ||
+          response.contains("development") ||
+          response.contains("milestone")) {
+        actionSet.add(ChatActionHandler.growthTracker);
+      }
+      
+      if (response.contains("nutrition") || 
+          response.contains("food") ||
+          response.contains("diet") ||
+          response.contains("meal") ||
+          response.contains("eat") ||
+          response.contains("vitamin") ||
+          response.contains("supplement")) {
+        actionSet.add(ChatActionHandler.nutritionGuide);
+      }
+      
+      if (response.contains("health") || 
+          response.contains("checkup") ||
+          response.contains("monitor") ||
+          response.contains("track") ||
+          response.contains("lifestyle")||
+          response.contains("mood")||
+          response.contains("sleep")||
+          response.contains("vaccination")||
+          response.contains("schedule")) {
+        actionSet.add(ChatActionHandler.healthTracker);
+      }
+
+      if (response.contains("family plan") || 
+          response.contains("contraception") ||
+          response.contains("birth control") ||
+          response.contains("conception") ||
+          response.contains("trying to conceive") ||
+          response.contains("fertility") ||
+          response.contains("pregnant")||
+          response.contains("have a baby")||
+          response.contains("want a baby")) {
+        actionSet.add(ChatActionHandler.familyPlanning);
+      }
+
+      if (response.contains("clinic") || 
+          response.contains("hospital") ||
+          response.contains("doctor") ||
+          response.contains("medical center") ||
+          response.contains("healthcare provider") ||
+          response.contains("appointment") ||
+          response.contains("checkup") ||
+          response.contains("nearby") ||
+          response.contains("location")||
+          response.contains("vaccination")) {
+        actionSet.add(ChatActionHandler.nearestClinic);
+      }
+
+      if (response.contains("community") || 
+          response.contains("support group") ||
+          response.contains("forum") ||
+          response.contains("chat") ||
+          response.contains("connect") ||
+          response.contains("share") ||
+          response.contains("experience") ||
+          response.contains("other moms") ||
+          response.contains("discussion")) {
+        actionSet.add(ChatActionHandler.community);
+      }
+
+      if (response.contains("learn") || 
+          response.contains("video") ||
+          response.contains("audio") ||
+          response.contains("watch") ||
+          response.contains("listen") ||
+          response.contains("resource") ||
+          response.contains("guide") ||
+          response.contains("tutorial") ||
+          response.contains("education")) {
+        actionSet.add(ChatActionHandler.audioVisualLearning);
+      }
+
+      // Convert set to list if any actions were added
+      if (actionSet.isNotEmpty) {
+        actions = actionSet.toList();
+      }
     } catch (e) {
       botResponse = "Sorry, I couldn't get a response: $e";
       if (kDebugMode) {
@@ -386,8 +506,13 @@ Adakah anda ingin membuka pautan ini?
       if (mounted) {
         setState(() {
           _messages.removeWhere((msg) => msg['isLoadingPlaceholder'] == true);
-          _messages.insert(0, {"isUser": false, "text": botResponse, "time": _getCurrentTime()});
-          _filteredMessages = List.from(_messages); // Update filtered messages
+          _messages.insert(0, {
+            "isUser": false, 
+            "text": botResponse, 
+            "time": _getCurrentTime(),
+            if (actions != null) "actions": actions.map((a) => a.toJson()).toList(),
+          });
+          _filteredMessages = List.from(_messages);
           _isLoading = false;
         });
         await _saveMessages();
@@ -661,6 +786,28 @@ Adakah anda ingin membuka pautan ini?
         ),
       );
     }
+  }
+
+  // Send initial greeting message
+  void _sendInitialGreeting() {
+    final greeting = _greetingsByLanguage[_selectedLanguage] ?? _greetingsByLanguage['English']!;
+    
+    setState(() {
+      _messages.insert(0, {
+        "isUser": false,
+        "text": greeting,
+        "time": _getCurrentTime(),
+        "showSuggestions": true // Flag to show suggestion buttons
+      });
+      _filteredMessages = List.from(_messages);
+    });
+    _saveMessages();
+  }
+
+  // Handle suggestion button tap
+  void _handleSuggestionTap(String suggestion) {
+    _textController.text = suggestion;
+    _handleSendMessage();
   }
 
   @override
@@ -940,6 +1087,10 @@ Adakah anda ingin membuka pautan ini?
   Widget _buildMessage(Map<String, dynamic> message) {
     final bool isUser = message['isUser'] as bool;
     final bool hasImage = message['hasImage'] ?? false;
+    final bool showSuggestions = message['showSuggestions'] ?? false;
+    final List<ChatAction>? actions = message['actions'] != null 
+      ? (message['actions'] as List).map((a) => ChatAction.fromJson(a)).toList() 
+      : null;
 
     if (message['isLoadingPlaceholder'] == true) {
       return const AnimatedLoadingIndicator();
@@ -947,7 +1098,6 @@ Adakah anda ingin membuka pautan ini?
 
     final String text = message['text'] as String;
     final String time = message['time'] as String;
-    // Generate a unique ID for each message
     final String messageId = message['id'] ?? '${isUser}_${time}_${text.hashCode}';
     if (message['id'] == null) {
       message['id'] = messageId;
@@ -992,26 +1142,75 @@ Adakah anda ingin membuka pautan ini?
         messageContent = Text(text, style: GoogleFonts.poppins());
       }
     } else {
-      messageContent = MarkdownBody(
-        data: text,
-        selectable: true, // Allows users to select and copy text from markdown
-        onTapLink: (text, href, title) async {
-          if (href != null) {
-            if (await canLaunch(href)) {
-              await launch(href);
-            } else {
-              throw 'Could not launch $href';
-            }
-          }
-        },
-        styleSheet: MarkdownStyleSheet(
-          p: GoogleFonts.poppins(),
-          h1: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-          h2: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-          h3: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-          strong: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-          em: GoogleFonts.poppins(fontStyle: FontStyle.italic),
-        ),
+      // Bot message with potential suggestions and actions
+      messageContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MarkdownBody(
+            data: text,
+            selectable: true,
+            onTapLink: (text, href, title) async {
+              if (href != null) {
+                if (await canLaunch(href)) {
+                  await launch(href);
+                }
+              }
+            },
+            styleSheet: MarkdownStyleSheet(
+              p: GoogleFonts.poppins(),
+              h1: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+              h2: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+              h3: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+              strong: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+              em: GoogleFonts.poppins(fontStyle: FontStyle.italic),
+            ),
+          ),
+          if (showSuggestions) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _initialSuggestions.map((suggestion) => ElevatedButton(
+                onPressed: () => _handleSuggestionTap(suggestion),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF1E6091),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+                child: Text(
+                  suggestion,
+                  style: GoogleFonts.poppins(fontSize: 12),
+                ),
+              )).toList(),
+            ),
+          ],
+          if (actions != null && actions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: actions.map((action) => ElevatedButton.icon(
+                onPressed: () => ChatActionHandler.handleAction(context, action),
+                icon: Icon(action.icon ?? Icons.arrow_forward, size: 16),
+                label: Text(
+                  action.label,
+                  style: GoogleFonts.poppins(fontSize: 12),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF1E6091),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+              )).toList(),
+            ),
+          ],
+        ],
       );
     }
 
@@ -1025,10 +1224,8 @@ Adakah anda ingin membuka pautan ini?
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(15.0),
             topRight: const Radius.circular(15.0),
-            bottomLeft:
-                isUser ? const Radius.circular(15.0) : const Radius.circular(0),
-            bottomRight:
-                isUser ? const Radius.circular(0) : const Radius.circular(15.0),
+            bottomLeft: isUser ? const Radius.circular(15.0) : const Radius.circular(0),
+            bottomRight: isUser ? const Radius.circular(0) : const Radius.circular(15.0),
           ),
           boxShadow: [
             BoxShadow(
@@ -1040,8 +1237,7 @@ Adakah anda ingin membuka pautan ini?
           ],
         ),
         child: Column(
-          crossAxisAlignment:
-              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             messageContent,
             const SizedBox(height: 4.0),
