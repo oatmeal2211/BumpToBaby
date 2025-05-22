@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
+import 'dart:async';
+import 'package:bumptobaby/models/health_schedule.dart';
 import 'package:bumptobaby/models/health_survey.dart';
 import 'package:bumptobaby/services/health_ai_service.dart';
 import 'package:bumptobaby/services/health_schedule_service.dart';
@@ -152,81 +156,162 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
   }
 
   Future<void> _submitSurvey() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+    if (_isPregnant && _dueDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select your due date')),
+      );
+      return;
+    }
 
-      try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('You must be logged in to submit a survey')),
-          );
-          return;
-        }
+    if (!_isPregnant && _babyBirthDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select your baby\'s birth date')),
+      );
+      return;
+    }
 
-        // Create survey object
-        final survey = HealthSurvey(
-          userId: user.uid,
-          isPregnant: _isPregnant,
-          dueDate: _isPregnant ? _dueDate : null,
-          babyBirthDate: !_isPregnant ? _babyBirthDate : null,
-          babyGender: !_isPregnant ? _babyGender : null,
-          babyWeight: !_isPregnant && _babyWeightController.text.isNotEmpty
-              ? double.parse(_babyWeightController.text)
-              : null,
-          babyHeight: !_isPregnant && _babyHeightController.text.isNotEmpty
-              ? double.parse(_babyHeightController.text)
-              : null,
-          healthConditions: _healthConditionsController.text.isNotEmpty
-              ? _healthConditionsController.text.split(',').map((e) => e.trim()).toList()
-              : null,
-          allergies: _allergiesController.text.isNotEmpty
-              ? _allergiesController.text.split(',').map((e) => e.trim()).toList()
-              : null,
-          medications: _medicationsController.text.isNotEmpty
-              ? _medicationsController.text.split(',').map((e) => e.trim()).toList()
-              : null,
-          createdAt: DateTime.now(),
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You must be logged in to submit a survey')),
         );
+        return;
+      }
 
-        // Save survey to Firestore
-        await _healthScheduleService.saveHealthSurvey(survey);
+      // Create survey object
+      final survey = HealthSurvey(
+        userId: user.uid,
+        isPregnant: _isPregnant,
+        dueDate: _isPregnant ? _dueDate : null,
+        babyBirthDate: !_isPregnant ? _babyBirthDate : null,
+        babyGender: !_isPregnant ? _babyGender : null,
+        babyWeight: !_isPregnant && _babyWeightController.text.isNotEmpty
+            ? double.parse(_babyWeightController.text)
+            : null,
+        babyHeight: !_isPregnant && _babyHeightController.text.isNotEmpty
+            ? double.parse(_babyHeightController.text)
+            : null,
+        healthConditions: _healthConditionsController.text.isNotEmpty
+            ? _healthConditionsController.text.split(',').map((e) => e.trim()).toList()
+            : null,
+        allergies: _allergiesController.text.isNotEmpty
+            ? _allergiesController.text.split(',').map((e) => e.trim()).toList()
+            : null,
+        medications: _medicationsController.text.isNotEmpty
+            ? _medicationsController.text.split(',').map((e) => e.trim()).toList()
+            : null,
+        createdAt: DateTime.now(),
+      );
 
-        // Generate health schedule using AI
-        final schedule = await _healthAIService.generateHealthSchedule(survey, user.uid);
+      // Save survey to Firestore first
+      await _healthScheduleService.saveHealthSurvey(survey);
 
-        // Save schedule to Firestore
-        await _healthScheduleService.saveHealthSchedule(schedule);
+      // Generate health schedule using AI with a timeout and error handling
+      HealthSchedule schedule;
+      try {
+        schedule = await _healthAIService.generateHealthSchedule(survey, user.uid)
+            .timeout(
+              Duration(seconds: 45), 
+              onTimeout: () {
+                if (kDebugMode) {
+                  print('AI schedule generation timed out');
+                }
+                throw TimeoutException('Schedule generation took too long');
+              }
+            );
+      } on TimeoutException catch (_) {
+        // Log the timeout
+        if (kDebugMode) {
+          print('Timeout occurred during schedule generation');
+        }
+        
+        // Create a basic schedule with some default items
+        final now = DateTime.now();
+        schedule = HealthSchedule(
+          userId: user.uid,
+          items: [
+            HealthScheduleItem(
+              title: 'Health Check-up',
+              description: 'Regular health consultation with your healthcare provider.',
+              scheduledDate: now.add(Duration(days: 30)),
+              category: 'checkup',
+            ),
+            HealthScheduleItem(
+              title: 'Health Profile Review',
+              description: 'Review and update your health profile.',
+              scheduledDate: now.add(Duration(days: 15)),
+              category: 'milestone',
+            ),
+          ],
+          generatedAt: now,
+        );
+      } catch (e) {
+        // Log any other errors during AI generation
+        if (kDebugMode) {
+          print("AI generation failed: $e");
+        }
+        
+        // Create a basic schedule with some default items
+        final now = DateTime.now();
+        schedule = HealthSchedule(
+          userId: user.uid,
+          items: [
+            HealthScheduleItem(
+              title: 'Health Check-up',
+              description: 'Regular health consultation with your healthcare provider.',
+              scheduledDate: now.add(Duration(days: 30)),
+              category: 'checkup',
+            ),
+            HealthScheduleItem(
+              title: 'Health Profile Review',
+              description: 'Review and update your health profile.',
+              scheduledDate: now.add(Duration(days: 15)),
+              category: 'milestone',
+            ),
+          ],
+          generatedAt: now,
+        );
+      }
 
-        // Return to previous screen if updating
-        if (widget.isUpdate) {
-          if (!mounted) return;
-          Navigator.pop(context, true); // Return true to indicate update was successful
-        } else {
-          // Navigate to schedule screen
-          if (!mounted) return;
+      // Save schedule to Firestore
+      await _healthScheduleService.saveHealthSchedule(schedule);
+
+      // Return to previous screen if updating
+      if (widget.isUpdate) {
+        if (!mounted) return;
+        Navigator.pop(context, true); // Return true to indicate update was successful
+      } else {
+        // Navigate to schedule screen
+        if (!mounted) return;
+        
+        // Use a lightweight approach to navigate to avoid UI freezes
+        Future.microtask(() {
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => HealthScheduleScreen(schedule: schedule),
             ),
           );
-        }
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red[600],
-          ),
-        );
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red[600],
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }

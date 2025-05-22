@@ -18,14 +18,98 @@ class HealthAIService {
     final String prompt = _buildPrompt(survey);
 
     try {
-      final response = await _callGeminiApi(prompt);
-      return _parseAIResponse(response, userId);
+      return await _retryWithBackoff(() async {
+        final response = await _callGeminiApi(prompt);
+        return await _parseAIResponse(response, userId);
+      }, maxRetries: 3);
     } catch (e) {
       if (kDebugMode) {
         print("Error generating health schedule: $e");
       }
-      throw Exception("Failed to generate health schedule: $e");
+      return _createDefaultSchedule(survey, userId);
     }
+  }
+
+  Future<HealthSchedule> _retryWithBackoff(
+    Future<HealthSchedule> Function() action, {
+    int maxRetries = 3,
+    Duration initialDelay = const Duration(seconds: 1),
+  }) async {
+    int attempt = 0;
+    Duration delay = initialDelay;
+
+    while (attempt < maxRetries) {
+      try {
+        return await action();
+      } catch (e) {
+        attempt++;
+        if (attempt >= maxRetries) rethrow;
+
+        if (kDebugMode) {
+          print('Retry attempt $attempt failed: $e');
+        }
+
+        await Future.delayed(delay);
+        delay *= 2;
+      }
+    }
+
+    throw Exception('Failed after $maxRetries attempts');
+  }
+
+  HealthSchedule _createDefaultSchedule(HealthSurvey survey, String userId) {
+    final now = DateTime.now();
+    final List<HealthScheduleItem> defaultItems = [];
+
+    if (survey.isPregnant && survey.dueDate != null) {
+      defaultItems.addAll([
+        HealthScheduleItem(
+          title: 'First Trimester Check-up',
+          description: 'Initial prenatal visit and health assessment',
+          scheduledDate: now.add(Duration(days: 30)),
+          category: 'checkup',
+        ),
+        HealthScheduleItem(
+          title: 'Prenatal Vitamins',
+          description: 'Daily prenatal vitamin intake',
+          scheduledDate: now,
+          category: 'supplement',
+        ),
+        HealthScheduleItem(
+          title: 'Genetic Screening',
+          description: 'Optional genetic screening test',
+          scheduledDate: now.add(Duration(days: 60)),
+          category: 'checkup',
+        ),
+      ]);
+    } else if (!survey.isPregnant && survey.babyBirthDate != null) {
+      defaultItems.addAll([
+        HealthScheduleItem(
+          title: 'First Pediatric Check-up',
+          description: 'Initial pediatric visit and health assessment',
+          scheduledDate: now.add(Duration(days: 30)),
+          category: 'checkup',
+        ),
+        HealthScheduleItem(
+          title: 'First Vaccine',
+          description: 'First round of infant vaccines',
+          scheduledDate: now.add(Duration(days: 60)),
+          category: 'vaccine',
+        ),
+        HealthScheduleItem(
+          title: 'Vitamin D Supplement',
+          description: 'Daily vitamin D drops for infant',
+          scheduledDate: now,
+          category: 'supplement',
+        ),
+      ]);
+    }
+
+    return HealthSchedule(
+      userId: userId,
+      items: defaultItems,
+      generatedAt: now,
+    );
   }
 
   String _buildPrompt(HealthSurvey survey) {
@@ -36,43 +120,39 @@ Current Date: ${now.toIso8601String()}
 User Status: ${survey.isPregnant ? 'Pregnant' : 'New Parent'}
 """;
 
+    if (survey.age != null) {
+      prompt += "User Age: ${survey.age}\n";
+    }
+    if (survey.location != null) {
+      prompt += "User Location: ${survey.location}\n";
+    }
+    if (survey.prefersNaturalRemedies == true) {
+      prompt += "User prefers natural/home remedies.\n";
+    }
+    if (survey.isBreastfeeding == true) {
+      prompt += "User is breastfeeding.\n";
+    }
+    if (survey.dietaryPreference != null) {
+      prompt += "Dietary Preference: ${survey.dietaryPreference}\n";
+    }
+
     if (survey.isPregnant && survey.dueDate != null) {
       final pregnancyDuration = survey.dueDate!.difference(now).inDays;
       final pregnancyWeeks = 40 - (pregnancyDuration / 7).floor();
       prompt += "Due Date: ${survey.dueDate!.toIso8601String()}\n";
       prompt += "Current Pregnancy Week: $pregnancyWeeks\n";
+      if (pregnancyWeeks >= 28) {
+        prompt += "User is in third trimester, focus on late-pregnancy care and delivery prep.\n";
+      }
       prompt += """
-Generate a detailed pregnancy health schedule covering these 4 key sections:
+Generate a detailed pregnancy health schedule with sections:
+1️⃣ Check-ups
+2️⃣ Vaccines
+3️⃣ Milestones
+4️⃣ Supplements
 
-1️⃣ Check-up Schedule:
-   - Regular prenatal visits (adjust frequency as due date approaches)
-   - Ultrasounds and screenings
-   - Blood tests and monitoring
-   - Mental health check-ins
+Your final response must be in this JSON format:
 
-2️⃣ Vaccine Schedule:
-   - Flu shot (if in season)
-   - Tdap vaccine (whooping cough)
-   - COVID vaccine or booster (if recommended)
-   - Any other pregnancy-specific vaccines
-
-3️⃣ Milestones:
-   - Fetal movement tracking/kick counts
-   - Trimester transitions
-   - Glucose screening
-   - Hospital bag preparation
-   - Birth plan creation
-   - Childbirth classes
-   - Nursery setup
-
-4️⃣ Supplements:
-   - Prenatal vitamins
-   - Folic acid
-   - Iron
-   - Calcium
-   - DHA/Omega-3
-
-Example JSON format:
 {
   "items": [
     {
@@ -81,60 +161,67 @@ Example JSON format:
       "scheduledDate": "2025-06-01",
       "category": "checkup"
     },
-    {
-      "title": "Daily Prenatal Vitamins",
-      "description": "Take one tablet daily with food.",
-      "scheduledDate": "2025-05-11",
-      "category": "supplement"
-    }
+    ...
   ]
 }
 
-IMPORTANT:
-- Provide enough checkups to cover until the due date.
-- Include important milestones and preparation tasks.
-- List only ~5 key supplements with daily instructions.
-- Dates must be after ${now.toIso8601String()}.
-- Dates must use YYYY-MM-DD format.
-- Categories must be: checkup, vaccine, milestone, supplement.
-- Output ONLY pure JSON (no ```json or markdown).
+- The key must be 'items' (not 'vaccine', 'checkups' etc.)
+- 'category' must be one of: checkup, vaccine, supplement, milestone
+- Dates in YYYY-MM-DD format
+- Output ONLY pure JSON
 """;
     }
 
     if (!survey.isPregnant && survey.babyBirthDate != null) {
       final babyAge = now.difference(survey.babyBirthDate!).inDays;
-      prompt += "Baby's Birth Date: ${survey.babyBirthDate!.toIso8601String()}\n";
-      prompt += "Baby's Age in Days: $babyAge\n";
-      if (survey.babyGender != null) prompt += "Baby's Gender: ${survey.babyGender}\n";
-      if (survey.babyWeight != null) prompt += "Baby's Weight: ${survey.babyWeight} kg\n";
-      if (survey.babyHeight != null) prompt += "Baby's Height: ${survey.babyHeight} cm\n";
-
+      final monthsOld = babyAge ~/ 30;
+      prompt += "Baby Birth Date: ${survey.babyBirthDate!.toIso8601String()}\n";
+      prompt += "Baby Age (months): $monthsOld\n";
       prompt += """
-Generate a detailed infant health schedule covering these 4 key sections:
+Generate a complete infant health schedule based on Malaysia's National Immunisation Programme (NIP), and include the following four sections:
 
-1️⃣ Check-up Schedule:
-   - Regular pediatric visits
-   - Growth assessments
-   - Developmental screenings
-   - Vision and hearing checks
+1️⃣ Vaccines (based on Malaysian NIP):
+- Follow the Malaysian schedule (BCG, Hep B, DTaP-IPV-Hib, Pneumococcal, MMR, etc.)
+- Include missed vaccines if any (mark as 'Due ASAP')
 
-2️⃣ Vaccine Schedule:
-   - Standard newborn/infant immunizations (HepB, DTaP, Hib, PCV, IPV, RV, etc.)
-   - Seasonal vaccines (like flu)
-   - Follow the standard CDC/WHO immunization schedule
+2️⃣ Check-ups:
+- Pediatric visits
+- Growth and development assessments
+- Vision and hearing screening
 
 3️⃣ Milestones:
-   - Physical milestones (tummy time, rolling over, sitting, crawling, walking)
-   - Cognitive milestones (tracking objects, recognizing faces, first words)
-   - Feeding milestones (introducing solids, self-feeding)
-   - Social milestones (smiling, laughing, playing)
+- Tummy time, rolling over, crawling, first words, walking, social play
+- Feeding milestones (breastfeeding, introducing solids, self-feeding)
+- Mark expected month and brief description
 
 4️⃣ Supplements:
-   - Vitamin D drops
-   - Iron drops (if needed)
-   - Any other supplements based on baby's needs
+- Vitamin D drops
+- Iron (if needed)
+- Any others relevant for Malaysian infants
 
-Use same JSON format as above.
+⛔️ Response Format Requirements:
+- JSON must have a top-level key 'items'
+- Each item must include: title, description, scheduledDate (YYYY-MM-DD), category
+- Category must be: vaccine, checkup, milestone, or supplement
+- Return ONLY valid pure JSON (no markdown, no ```json)
+
+Here's an example of the required format:
+{
+  "items": [
+    {
+      "title": "6-Month Checkup",
+      "description": "Assess baby's weight, reflexes, and vaccination status.",
+      "scheduledDate": "2025-08-11",
+      "category": "checkup"
+    },
+    {
+      "title": "Vitamin D Drops",
+      "description": "Give baby daily vitamin D drops for bone health.",
+      "scheduledDate": "2025-03-01",
+      "category": "supplement"
+    }
+  ]
+}
 """;
     }
 
@@ -167,10 +254,10 @@ Use same JSON format as above.
         {"parts": [{"text": prompt}]}
       ],
       "generationConfig": {
-        "temperature": 0.1,
+        "temperature": 0.3,
         "maxOutputTokens": 3000,
         "topP": 0.8,
-        "topK": 40
+        "topK": 20
       }
     });
 
@@ -195,49 +282,14 @@ Use same JSON format as above.
     }
   }
 
-  HealthSchedule _parseAIResponse(String aiResponse, String userId) {
+  Future<HealthSchedule> _parseAIResponse(String aiResponse, String userId) {
     try {
-      String cleanedResponse = aiResponse
-          .replaceAll('```json', '')
-          .replaceAll('```', '')
-          .trim();
-
-      final jsonData = json.decode(cleanedResponse);
-
-      if (!jsonData.containsKey('items') || jsonData['items'] is! List) {
-        throw Exception("Invalid JSON format: missing 'items' array.");
-      }
-
-      final items = jsonData['items'] as List;
-      final List<HealthScheduleItem> scheduleItems = [];
-
-      for (var item in items) {
-        if (item['title'] == null ||
-            item['description'] == null ||
-            item['scheduledDate'] == null ||
-            item['category'] == null) {
-          continue;
-        }
-
-        final date = DateTime.tryParse(item['scheduledDate'].toString());
-        if (date == null) continue;
-
-        scheduleItems.add(HealthScheduleItem(
-          title: item['title'].toString(),
-          description: item['description'].toString(),
-          scheduledDate: date,
-          category: item['category'].toString(),
-        ));
-      }
-
-      if (scheduleItems.isEmpty) {
-        throw Exception("No valid schedule items parsed.");
-      }
-
-      return HealthSchedule(
-        userId: userId,
-        items: scheduleItems,
-        generatedAt: DateTime.now(),
+      return compute(
+        _parseScheduleInIsolate,
+        {
+          'aiResponse': aiResponse,
+          'userId': userId,
+        },
       );
     } catch (e) {
       if (kDebugMode) {
@@ -247,4 +299,59 @@ Use same JSON format as above.
       throw Exception("Failed to parse AI response: $e");
     }
   }
+}
+
+HealthSchedule _parseScheduleInIsolate(Map<String, dynamic> payload) {
+  final String aiResponse = payload['aiResponse'];
+  final String userId = payload['userId'];
+
+  final cleanedResponse = aiResponse
+      .replaceAll('```json', '')
+      .replaceAll('```', '')
+      .trim();
+
+  dynamic jsonData;
+  try {
+    if (cleanedResponse.startsWith('{') && !cleanedResponse.endsWith('}')) {
+      final fixedResponse = cleanedResponse + '}';
+      jsonData = json.decode(fixedResponse);
+    } else {
+      jsonData = json.decode(cleanedResponse);
+    }
+  } catch (e) {
+    final jsonMatch = RegExp(r'\{.*\}', multiLine: true, dotAll: true).firstMatch(cleanedResponse);
+    if (jsonMatch != null) {
+      jsonData = json.decode(jsonMatch.group(0)!);
+    } else {
+      throw Exception("Could not extract valid JSON");
+    }
+  }
+
+  if (!jsonData.containsKey('items') || jsonData['items'] is! List) {
+    throw Exception("Invalid JSON format: missing 'items' array.");
+  }
+
+  final items = jsonData['items'] as List;
+  final scheduleItems = items.map((item) {
+    final date = DateTime.tryParse(item['scheduledDate'].toString());
+    if (date == null) return null;
+    return HealthScheduleItem(
+      title: item['title'] ?? '',
+      description: item['description'] ?? '',
+      scheduledDate: date,
+      category: item['category'] ?? 'milestone',
+    );
+  }).whereType<HealthScheduleItem>().toList();
+
+  if (scheduleItems.isEmpty) {
+    throw Exception("No valid schedule items parsed.");
+  }
+
+  scheduleItems.sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
+
+  return HealthSchedule(
+    userId: userId,
+    items: scheduleItems,
+    generatedAt: DateTime.now(),
+  );
 }

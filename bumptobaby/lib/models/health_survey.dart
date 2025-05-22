@@ -10,6 +10,11 @@ class HealthSurvey {
   final List<String>? allergies;
   final List<String>? medications;
   final DateTime createdAt;
+  final int? age;
+  final String? location;
+  final bool? prefersNaturalRemedies;
+  final bool? isBreastfeeding;
+  final String? dietaryPreference;
 
   HealthSurvey({
     required this.userId,
@@ -23,6 +28,11 @@ class HealthSurvey {
     this.allergies,
     this.medications,
     required this.createdAt,
+    this.age,
+    this.location,
+    this.prefersNaturalRemedies,
+    this.isBreastfeeding,
+    this.dietaryPreference,
   });
 
   // Convert to JSON
@@ -39,6 +49,11 @@ class HealthSurvey {
       'allergies': allergies,
       'medications': medications,
       'createdAt': createdAt.toIso8601String(),
+      'age': age,
+      'location': location,
+      'prefersNaturalRemedies': prefersNaturalRemedies,
+      'isBreastfeeding': isBreastfeeding,
+      'dietaryPreference': dietaryPreference,
     };
   }
 
@@ -62,6 +77,11 @@ class HealthSurvey {
           ? List<String>.from(json['medications'])
           : null,
       createdAt: DateTime.parse(json['createdAt']),
+      age: json['age'],
+      location: json['location'],
+      prefersNaturalRemedies: json['prefersNaturalRemedies'],
+      isBreastfeeding: json['isBreastfeeding'],
+      dietaryPreference: json['dietaryPreference'],
     );
   }
 } 
