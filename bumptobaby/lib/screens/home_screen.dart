@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:bumptobaby/services/health_schedule_service.dart';
 import 'package:bumptobaby/models/health_schedule.dart';
+import 'package:bumptobaby/services/seed_pubmed_data.dart';
 
 // Import all the screens we need
 import 'package:bumptobaby/screens/nearest_clinic_screen.dart';
@@ -31,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final HealthScheduleService _healthScheduleService = HealthScheduleService();
+  late SeedPubMedData _seedPubMedData;
   
   String _username = '';
   String _profileImageUrl = '';
@@ -43,6 +45,12 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _username = widget.username;
     _fetchUserData();
+    
+    // Initialize and check if database needs seeding
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _seedPubMedData = SeedPubMedData(context);
+      _seedPubMedData.checkAndSeedDatabaseIfNeeded();
+    });
   }
   
   Future<void> _fetchUserData() async {
