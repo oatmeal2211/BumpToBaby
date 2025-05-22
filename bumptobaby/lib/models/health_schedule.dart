@@ -2,8 +2,10 @@ class HealthScheduleItem {
   final String title;
   final String description;
   final DateTime scheduledDate;
-  final String category; // 'checkup', 'vaccine', 'milestone', 'supplement'
+  final String category; // 'checkup', 'vaccine', 'milestone', 'supplement', 'risk_alert', 'prediction'
   final bool isCompleted;
+  final String? severity; // 'low', 'medium', 'high' for risk alerts
+  final Map<String, dynamic>? additionalData; // For storing extra information related to the item
 
   HealthScheduleItem({
     required this.title,
@@ -11,6 +13,8 @@ class HealthScheduleItem {
     required this.scheduledDate,
     required this.category,
     this.isCompleted = false,
+    this.severity,
+    this.additionalData,
   });
 
   // Convert to JSON
@@ -21,6 +25,8 @@ class HealthScheduleItem {
       'scheduledDate': scheduledDate.toIso8601String(),
       'category': category,
       'isCompleted': isCompleted,
+      'severity': severity,
+      'additionalData': additionalData,
     };
   }
 
@@ -32,6 +38,8 @@ class HealthScheduleItem {
       scheduledDate: DateTime.parse(json['scheduledDate']),
       category: json['category'],
       isCompleted: json['isCompleted'] ?? false,
+      severity: json['severity'],
+      additionalData: json['additionalData'],
     );
   }
 
@@ -42,6 +50,8 @@ class HealthScheduleItem {
     DateTime? scheduledDate,
     String? category,
     bool? isCompleted,
+    String? severity,
+    Map<String, dynamic>? additionalData,
   }) {
     return HealthScheduleItem(
       title: title ?? this.title,
@@ -49,6 +59,8 @@ class HealthScheduleItem {
       scheduledDate: scheduledDate ?? this.scheduledDate,
       category: category ?? this.category,
       isCompleted: isCompleted ?? this.isCompleted,
+      severity: severity ?? this.severity,
+      additionalData: additionalData ?? this.additionalData,
     );
   }
 }
