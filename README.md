@@ -14,9 +14,27 @@ BumpToBaby is a mobile app that centralises all you need as a mother to help you
 | **Github**   | Version Control |
 | **Perspective API** | Content Moderation |
 | **Google Maps API**   | Map Data Integration |
+| **Qwen**   | Medical Misinformation Detection |
+| **PubMed API**   | Medical Data Retrieval |
 
-## Features
+## Medical Misinformation Prevention
 
+BumpToBaby now includes a sophisticated medical misinformation detection system using Retrieval Augmented Generation (RAG) with Qwen. This system helps protect users from potentially harmful medical misinformation by:
+
+1. **PubMed Data Integration**: The app retrieves reliable medical information from PubMed, a trusted source of medical research.
+
+2. **Intelligent Content Moderation**: Using advanced AI technology from Qwen, the app can detect when posts contain medical information that contradicts established medical consensus.
+
+3. **Informative Warnings**: When misinformation is detected, users see clear warning banners explaining the issue along with references to accurate medical information.
+
+4. **Seamless Integration**: The system works alongside our existing content moderation to provide comprehensive protection against both harmful and medically inaccurate content.
+
+### How It Works
+
+1. When a user creates a post, the content is analyzed for medical claims
+2. The system searches for relevant medical information in our database
+3. If the post contradicts reliable medical information, it's flagged
+4. Users see a warning banner with correct information when viewing flagged posts
 ### 1. User Authentication
 - Secure signup and login functionality
 - Email verification
@@ -198,6 +216,8 @@ Eight main feature buttons providing access to:
    GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
    PERSPECTIVE_API_KEY=YOUR_PERSPECTIVE_API_KEY
    GEMINI_API_KEY=YOUR_GEMENI_API_KEY
+   DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY
+   PUBMED_API_KEY=YOUR_PUBMED_API_KEY
    ```
 
 8. **Example google-services.json format**

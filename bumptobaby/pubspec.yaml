@@ -55,6 +55,8 @@ dependencies:
   speech_to_text: ^7.0.0
   google_generative_ai: ^0.4.7
   connectivity_plus: ^5.0.2
+  collection: ^1.18.0  # For priority queue in similarity calculations
+  xml: ^6.3.0  # For parsing PubMed XML responses
 dev_dependencies:
   flutter_test:
     sdk: flutter
