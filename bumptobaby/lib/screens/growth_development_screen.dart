@@ -1,6 +1,7 @@
 import 'dart:io'; // For File operations
 import 'dart:convert'; // For jsonEncode (if sending complex data to a backend)
 import 'dart:developer' as developer; // For logging
+import 'dart:math' as math; // Added for math operations
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // For input formatters
@@ -13,6 +14,10 @@ import 'package:fl_chart/fl_chart.dart'; // Add this import at the top
 import 'package:google_generative_ai/google_generative_ai.dart' as genai;
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
 import 'package:shared_preferences/shared_preferences.dart'; // For data persistence
+import 'package:firebase_auth/firebase_auth.dart'; // For Firebase Auth
+import 'package:bumptobaby/services/diary_service.dart'; // Import our Diary Service
+import 'package:bumptobaby/services/baby_profile_service.dart'; // Import Baby Profile Service
+import 'package:bumptobaby/models/baby_profile.dart'; // Import Baby Profile Model
 
 // Load the API key from the environment
 final String _geminiApiKey = dotenv.env['GEMINI_API_KEY'] ?? "YOUR_API_KEY_HERE"; // Fallback if not found
@@ -29,31 +34,13 @@ enum LengthUnit { cm, inch }
 // New Enum for weight units (for baby weight)
 enum WeightUnit { kg, lb }
 
-// Data class for User Profile
-class UserProfile {
-  String id;
-  String name;
-  // In future stages, profile-specific data like diary entries, mode, score etc. will be here
-
-  UserProfile({required this.id, required this.name});
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-  };
-
-  factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
-    id: json['id'],
-    name: json['name'],
-  );
-}
-
 // Data class for Diary Entry
 class DiaryEntry {
   final DateTime date;
   final String? imagePath;
   final String title;       // New field
   final String description; // New field
+  final String entryType;   // Added field: "fetal" or "baby"
 
   // Pregnancy-specific fields (nullable)
   final String? cravings;
@@ -73,6 +60,7 @@ class DiaryEntry {
     this.imagePath,
     required this.title,
     required this.description,
+    required this.entryType, // Added parameter with required constraint
     // Pregnancy fields
     this.cravings,
     this.mood,
@@ -114,6 +102,7 @@ class DiaryEntry {
       'imagePath': imagePath,
       'title': title,
       'description': description,
+      'entryType': entryType, // Added entry type to JSON
       // Pregnancy fields
       'cravings': cravings,
       'mood': mood,
@@ -135,6 +124,7 @@ class DiaryEntry {
       imagePath: json['imagePath'] as String?,
       title: (json['title'] as String?) ?? '', // Ensure title is non-null
       description: (json['description'] as String?) ?? '', // Ensure description is non-null
+      entryType: (json['entryType'] as String?) ?? 'fetal', // Default to fetal for backward compatibility
       // Pregnancy fields
       cravings: json['cravings'] as String?,
       mood: json['mood'] as String?,
@@ -171,9 +161,14 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
   bool _isLoading = true;
   int _userScore = 0; // User's score for gamification
 
-  // Profile-related state
-  List<UserProfile> _profiles = [];
-  String? _currentProfileId; // Nullable to handle cases where no profile exists yet
+  // Firebase services
+  final DiaryService _diaryService = DiaryService();
+  final BabyProfileService _babyProfileService = BabyProfileService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Baby profile related state
+  List<BabyProfile> _babyProfiles = [];
+  String? _currentBabyProfileId;
 
   // TabControllers for managing tab states and listeners
   TabController? _pregnancyTabController;
@@ -201,7 +196,6 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
     _babyTrackerTabController?.removeListener(_handleBabyTrackerTabSelection);
     _pregnancyTabController?.dispose();
     _babyTrackerTabController?.dispose();
-    _saveData(); // Save data when the screen is disposed
     super.dispose();
   }
 
@@ -215,6 +209,15 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
         _fetchAndSetAiInsights();
       }
     }
+    
+    // When switching to Bump Diary tab, refresh entries from Firebase
+    if (_pregnancyTabController != null && 
+        _pregnancyTabController!.indexIsChanging == false && // Ensure it's a confirmed change
+        _pregnancyTabController!.index == 1 && // 1 is Bump Diary tab
+        _selectedMode == GrowthScreenMode.pregnancy) {
+      // Refresh diary entries from Firebase
+      _refreshDiaryEntries();
+    }
   }
 
   // Handler for baby tracker tab selection
@@ -227,12 +230,21 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
         _fetchAndSetAiInsights();
       }
     }
+    
+    // When switching to Growth Diary tab, refresh entries from Firebase
+    if (_babyTrackerTabController != null &&
+        _babyTrackerTabController!.indexIsChanging == false && // Ensure it's a confirmed change
+        _babyTrackerTabController!.index == 1 && // 1 is Growth Diary tab
+        _selectedMode == GrowthScreenMode.baby) {
+      // Refresh diary entries from Firebase
+      _refreshDiaryEntries();
+    }
   }
 
-  // Handle profile deletion with proper state management
-  Future<void> _deleteProfileAndData(UserProfile profile) async {
+  // Handle profile deletion with proper Firebase integration
+  Future<void> _deleteBabyProfile(BabyProfile profile) async {
     // Don't allow deleting the last profile
-    if (_profiles.length <= 1) {
+    if (_babyProfiles.length <= 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Cannot delete the only profile')),
       );
@@ -240,48 +252,52 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
     }
 
     // Create a new list without the profile to delete
-    final newProfiles = _profiles.where((p) => p.id != profile.id).toList();
+    final newProfiles = _babyProfiles.where((p) => p.id != profile.id).toList();
     
     // If we're deleting the current profile, switch to another one
-    bool needsProfileSwitch = profile.id == _currentProfileId;
+    bool needsProfileSwitch = profile.id == _currentBabyProfileId;
     // Ensure we're using a non-null value for newCurrentId
     String newCurrentId = needsProfileSwitch 
         ? newProfiles.first.id 
-        : (_currentProfileId ?? newProfiles.first.id);
+        : (_currentBabyProfileId ?? newProfiles.first.id);
 
-    // Update profiles list and current ID if needed
-    setState(() {
-      _profiles = newProfiles;
+    // Delete from Firebase
+    try {
+      await _babyProfileService.deleteBabyProfile(profile.id);
+      
+      // Update local state
+      setState(() {
+        _babyProfiles = newProfiles;
+        if (needsProfileSwitch) {
+          _currentBabyProfileId = newCurrentId;
+          _isLoading = true; // Will load data for the new profile
+        }
+      });
+
+      // If we switched profiles, set the new current profile in Firebase and load data
       if (needsProfileSwitch) {
-        _currentProfileId = newCurrentId;
-        _isLoading = true; // Will load data for the new profile
+        await _babyProfileService.setCurrentBabyProfile(newCurrentId);
+        await _loadSavedData();
       }
-    });
 
-    // Delete the profile's data from SharedPreferences
-    final prefs = await SharedPreferences.getInstance();
-    // Remove profile-specific data
-    await prefs.remove('diary_entries_${profile.id}');
-    await prefs.remove('fetal_measurements_${profile.id}');
-    
-    // Save the updated profiles list
-    await _saveData();
-    
-    // If we switched profiles, load the new profile's data
-    if (needsProfileSwitch) {
-      await _loadSavedData();
-    }
-
-    // Show confirmation
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${profile.name} profile deleted')),
-      );
+      // Show confirmation
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${profile.name} profile deleted')),
+        );
+      }
+    } catch (e) {
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting profile: ${e.toString()}')),
+        );
+      }
     }
   }
 
   // Show confirmation dialog before deleting
-  void _showDeleteProfileConfirmationDialog(UserProfile profile) {
+  void _showDeleteProfileConfirmationDialog(BabyProfile profile) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -302,7 +318,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                _deleteProfileAndData(profile);
+                _deleteBabyProfile(profile);
               },
               child: Text(
                 'Delete',
@@ -315,57 +331,76 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
     );
   }
 
-  // Load saved preferences and diary entries
+  // Load saved data from Firebase
   Future<void> _loadSavedData() async {
     setState(() { _isLoading = true; });
+    
     try {
-      final prefs = await SharedPreferences.getInstance();
-      
-      // Load all profiles first
-      final profilesJsonList = prefs.getStringList('profiles') ?? [];
-      _profiles = profilesJsonList.map((jsonStr) => UserProfile.fromJson(json.decode(jsonStr))).toList();
-      _currentProfileId = prefs.getString('current_profile_id');
+      // Check if user is logged in
+      if (_auth.currentUser == null) {
+        throw Exception('User not logged in');
+      }
 
-      // Create default profile if none exists
-      if (_profiles.isEmpty) {
-        final defaultProfile = UserProfile(id: DateTime.now().millisecondsSinceEpoch.toString(), name: 'My First Profile');
-        _profiles.add(defaultProfile);
-        _currentProfileId = defaultProfile.id;
-      } 
-      // Set current profile to first if current ID doesn't exist
-      else if (_currentProfileId == null || !_profiles.any((p) => p.id == _currentProfileId)) {
-        _currentProfileId = _profiles.first.id;
-      }
+      // Load all baby profiles
+      _babyProfiles = await _babyProfileService.getBabyProfiles();
       
-      // Load profile-specific data
-      if (_currentProfileId != null) {
-        // Load mode (pregnancy/baby)
-        final profileSpecificModeIndex = prefs.getInt('selected_mode_$_currentProfileId') ?? GrowthScreenMode.pregnancy.index;
-        _selectedMode = GrowthScreenMode.values[profileSpecificModeIndex];
-        
-        // Load calendar state
-        _isCalendarExpanded = prefs.getBool('calendar_expanded_$_currentProfileId') ?? false;
-        
-        // Load diary entries
-        _allDiaryEntries.clear(); // Clear any existing entries first
-        final profileEntriesJsonList = prefs.getStringList('diary_entries_$_currentProfileId') ?? [];
-        if (profileEntriesJsonList.isNotEmpty) {
-          _allDiaryEntries.addAll(profileEntriesJsonList.map((jsonStr) => DiaryEntry.fromJson(json.decode(jsonStr))).toList());
-        } else {
-          // Add sample entries only for new profiles
-          _addSampleEntries();
-        }
+      // If no profiles exist, create a default one
+      if (_babyProfiles.isEmpty) {
+        final defaultProfile = await _babyProfileService.createBabyProfile(
+          name: 'My First Profile',
+          isPregnancy: true,
+          dueDate: DateTime.now().add(Duration(days: 280)), // ~40 weeks from now
+        );
+        _babyProfiles = [defaultProfile];
+        _currentBabyProfileId = defaultProfile.id;
+        await _babyProfileService.setCurrentBabyProfile(defaultProfile.id);
       } else {
-        // Fallback defaults
-        _selectedMode = GrowthScreenMode.pregnancy;
-        _isCalendarExpanded = false;
-        _allDiaryEntries.clear();
+        // Get current profile ID
+        _currentBabyProfileId = await _babyProfileService.getCurrentBabyProfileId();
+        
+        // If no current profile is set or the ID doesn't match any profile, use the first one
+        if (_currentBabyProfileId == null || 
+            !_babyProfiles.any((p) => p.id == _currentBabyProfileId)) {
+          _currentBabyProfileId = _babyProfiles.first.id;
+          await _babyProfileService.setCurrentBabyProfile(_currentBabyProfileId!);
+        }
       }
+
+      // Load the mode based on the current profile
+      BabyProfile? currentProfile = _babyProfiles.firstWhere(
+        (p) => p.id == _currentBabyProfileId,
+        orElse: () => _babyProfiles.first,
+      );
+      _selectedMode = currentProfile.isPregnancy 
+          ? GrowthScreenMode.pregnancy 
+          : GrowthScreenMode.baby;
       
-      // Load global user score
-      _userScore = prefs.getInt('user_score') ?? 0;
+      // Load diary entries for the current profile
+      _allDiaryEntries.clear();
+      if (_currentBabyProfileId != null) {
+        final entries = await _diaryService.getDiaryEntries(_currentBabyProfileId!);
+        if (entries.isNotEmpty) {
+          _allDiaryEntries.addAll(entries);
+        } 
+        // Comment out sample entries to prevent adding mock data
+        // else {
+        //   // Add sample entries only for new profiles
+        //   await _addSampleEntries();
+        // }
+      }
+
+      // Load calendar state from SharedPreferences (still useful to remember UI state)
+      final prefs = await SharedPreferences.getInstance();
+      _isCalendarExpanded = prefs.getBool('calendar_expanded_${_auth.currentUser!.uid}') ?? false;
       
-      // Update UI
+      // Get the user's total points instead of just profile points
+      _userScore = await _babyProfileService.getUserTotalPoints();
+      
+      // If there's no user total points yet, fallback to profile points for backward compatibility
+      if (_userScore == 0 && currentProfile != null) {
+        _userScore = currentProfile.points;
+      }
+
       if (mounted) {
         setState(() { _isLoading = false; });
       }
@@ -373,24 +408,16 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
       // Fetch AI insights based on the loaded data
       _fetchAndSetAiInsights();
       
-      developer.log('Loaded data for profile: $_currentProfileId with ${_allDiaryEntries.length} entries', name: 'GrowthDevelopmentScreen');
+      developer.log('Loaded data for profile: $_currentBabyProfileId with ${_allDiaryEntries.length} entries', name: 'GrowthDevelopmentScreen');
     } catch (e) {
       developer.log('Error loading saved data: $e', name: 'GrowthDevelopmentScreen');
-      // Recovery handling
-      if (_profiles.isEmpty) {
-        final defaultProfile = UserProfile(id: DateTime.now().millisecondsSinceEpoch.toString(), name: 'My First Profile');
-        _profiles.add(defaultProfile);
-        _currentProfileId = defaultProfile.id;
-      }
-      _selectedMode = GrowthScreenMode.pregnancy;
-      _isCalendarExpanded = false;
-      _allDiaryEntries.clear();
-      if (_allDiaryEntries.isEmpty) { _addSampleEntries(); } 
       
-      if (mounted) {
-        setState(() { _isLoading = false; });
-      }
-      _fetchAndSetAiInsights();
+      // Basic recovery handling
+      setState(() { 
+        _isLoading = false;
+        _selectedMode = GrowthScreenMode.pregnancy;
+        _isCalendarExpanded = false;
+      });
     }
   }
 
@@ -400,22 +427,22 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
       final prefs = await SharedPreferences.getInstance();
       
       // Save all profiles
-      final profilesJsonList = _profiles.map((p) => json.encode(p.toJson())).toList();
+      final profilesJsonList = _babyProfiles.map((p) => json.encode(p.toJson())).toList();
       await prefs.setStringList('profiles', profilesJsonList);
       
       // Save current profile ID selection
-      if (_currentProfileId != null) {
-        await prefs.setString('current_profile_id', _currentProfileId!);
+      if (_currentBabyProfileId != null) {
+        await prefs.setString('current_profile_id', _currentBabyProfileId!);
 
         // Save profile-specific data
-        await prefs.setInt('selected_mode_$_currentProfileId', _selectedMode.index);
-        await prefs.setBool('calendar_expanded_$_currentProfileId', _isCalendarExpanded);
+        await prefs.setInt('selected_mode_$_currentBabyProfileId', _selectedMode.index);
+        await prefs.setBool('calendar_expanded_$_currentBabyProfileId', _isCalendarExpanded);
         
         // Save diary entries for this profile
         final entriesJsonList = _allDiaryEntries.map((entry) => json.encode(entry.toJson())).toList();
-        await prefs.setStringList('diary_entries_$_currentProfileId', entriesJsonList);
+        await prefs.setStringList('diary_entries_$_currentBabyProfileId', entriesJsonList);
         
-        developer.log('Saved ${_allDiaryEntries.length} entries for profile: $_currentProfileId', name: 'GrowthDevelopmentScreen');
+        developer.log('Saved ${_allDiaryEntries.length} entries for profile: $_currentBabyProfileId', name: 'GrowthDevelopmentScreen');
       }
       
       // Save global user score
@@ -426,26 +453,37 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
   }
 
   // Add sample entries for the current profile
-  void _addSampleEntries() {
+  Future<void> _addSampleEntries() async {
+    if (_currentBabyProfileId == null || !_diaryService.isUserLoggedIn) return;
+    
     // Clear entries first to ensure we're starting fresh
     _allDiaryEntries.clear();
     
     // Get the current profile name for personalized samples
-    String profileName = "this profile";
-    if (_currentProfileId != null) {
-      UserProfile? profile = _profiles.firstWhere(
-        (p) => p.id == _currentProfileId,
-        orElse: () => UserProfile(id: "default", name: "this profile")
-      );
-      profileName = profile.name;
-    }
+    BabyProfile? currentProfile = _babyProfiles.firstWhere(
+      (p) => p.id == _currentBabyProfileId,
+      orElse: () => BabyProfile(
+        id: "default", 
+        name: "this profile",
+        isPregnancy: true
+      )
+    );
+    String profileName = currentProfile.name;
     
-    // Add sample entries with references to the profile name
-    _allDiaryEntries.addAll([
+    // Create sample entries with references to the profile name
+    List<DiaryEntry> sampleEntries = [];
+    
+    // Commenting out the addition of sample entries
+    /*
+    // Add BOTH types of entries for each profile
+    
+    // Sample entries for pregnancy/fetal tracking (Bump Diary)
+    sampleEntries.addAll([
       DiaryEntry(
         date: DateTime.now().subtract(const Duration(days: 30)).copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
         title: "First check-up for $profileName! Excited to start tracking.",
-        description: "None yet",
+        description: "Had my first prenatal appointment today. Everything looks good!",
+        entryType: "fetal", // Explicitly mark as fetal
         mood: "Excited",
         fetalSize: 2.5,
         fetalSizeUnit: FetalSizeUnit.cm,
@@ -454,15 +492,48 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
       DiaryEntry(
         date: DateTime.now().copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
         title: "Feeling good with $profileName today. Had my regular check-up.",
-        description: "Apples",
+        description: "Craving apples today. Baby is growing well according to doctor.",
+        entryType: "fetal", // Explicitly mark as fetal
         mood: "Happy",
+        cravings: "Apples",
         fetalSize: 10.0,
         fetalSizeUnit: FetalSizeUnit.cm,
         pregnancyStage: "Week 16",
       ),
     ]);
     
-    developer.log("Added sample entries for profile: $_currentProfileId", name: "GrowthDevelopmentScreen");
+    // Sample entries for baby tracking (Growth Diary)
+    sampleEntries.addAll([
+      DiaryEntry(
+        date: DateTime.now().subtract(const Duration(days: 28)).copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
+        title: "First pediatrician visit for $profileName!",
+        description: "First checkup went well. Doctor says baby is healthy!",
+        entryType: "baby", // Explicitly mark as baby
+        height: 50.0,
+        heightUnit: LengthUnit.cm,
+        weight: 3.5,
+        weightUnit: WeightUnit.kg,
+      ),
+      DiaryEntry(
+        date: DateTime.now().subtract(const Duration(days: 2)).copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0),
+        title: "Monthly checkup for $profileName",
+        description: "$profileName is growing well and started smiling!",
+        entryType: "baby", // Explicitly mark as baby
+        height: 54.0,
+        heightUnit: LengthUnit.cm,
+        weight: 4.2,
+        weightUnit: WeightUnit.kg,
+      ),
+    ]);
+    */
+    
+    // Add to local state
+    _allDiaryEntries.addAll(sampleEntries);
+    
+    // Save to Firebase
+    await _diaryService.saveDiaryEntries(_currentBabyProfileId!, sampleEntries);
+    
+    developer.log("Added ${sampleEntries.length} sample entries (both fetal and baby) for profile: $_currentBabyProfileId", name: "GrowthDevelopmentScreen");
   }
 
   Future<void> _fetchAndSetAiInsights() async {
@@ -538,9 +609,6 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
               return data;
         }).toList();
 
-        // We need a way to get baby's age for better insights. For now, we'll omit it or use a generic reference.
-        // String babyAgeReference = "your baby"; // Or derive from diary entries if possible
-
         prompt = """
         You are an AI assistant for a baby tracking app.
         Here is the baby's recent growth data (date, height, weight, notes):
@@ -597,21 +665,18 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
   // Helper function to determine trimester from week
   String _getTrimesterFromWeek(String weekStage) {
     if (!weekStage.startsWith("Week ")) {
-      return "Unknown Trimester"; // Should not happen with new dropdown
+      return "Unknown";
     }
+    
     try {
-      final weekNumber = int.parse(weekStage.replaceAll("Week ", ""));
-      if (weekNumber >= 1 && weekNumber <= 12) {
-        return "First Trimester";
-      } else if (weekNumber >= 13 && weekNumber <= 26) {
-        return "Second Trimester";
-      } else if (weekNumber >= 27 && weekNumber <= 42) { // Adjusted to 42 weeks
-        return "Third Trimester";
-      } else {
-        return "Unknown Trimester";
-      }
+      final weekStr = weekStage.substring(5); // Extract just the number part
+      final week = int.parse(weekStr);
+      
+      if (week <= 12) return "First Trimester";
+      if (week <= 27) return "Second Trimester";
+      return "Third Trimester";
     } catch (e) {
-      return "Unknown Trimester";
+      return "Unknown";
     }
   }
 
@@ -634,6 +699,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
   // Dialog to add a new profile
   Future<void> _showAddProfileDialog() async {
     final TextEditingController nameController = TextEditingController();
+    
     return showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -655,27 +721,48 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
             ),
             TextButton(
               child: Text('Add', style: GoogleFonts.poppins()),
-              onPressed: () {
+              onPressed: () async {
                 if (nameController.text.isNotEmpty) {
-                  final newProfile = UserProfile(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    name: nameController.text,
-                  );
+                  Navigator.of(dialogContext).pop(); // Close the dialog
+                  
+                  // Show loading indicator
                   setState(() {
-                    _profiles.add(newProfile);
-                    _currentProfileId = newProfile.id; // Switch to the new profile
-                    
-                    // Initialize data for the new profile
-                    _selectedMode = GrowthScreenMode.pregnancy; // Default mode
-                    _isCalendarExpanded = false; // Default calendar state
-                    _allDiaryEntries.clear(); // Clear any existing (global/previous profile) entries from state
-                    _addSampleEntries(); // Add sample entries for the new profile
-                    
-                    // AI insights will be fetched by _loadSavedData or explicitly after this
+                    _isLoading = true;
                   });
-                  _saveData(); // Save the new profile list, current ID, and its initial data
-                  _fetchAndSetAiInsights(); // Fetch insights for the new profile immediately
-                  Navigator.of(dialogContext).pop();
+                  
+                  try {
+                    // Use the BabyProfileService to create a profile in Firestore
+                    // Each profile supports both fetal and baby tracking
+                    final newProfile = await _babyProfileService.createBabyProfile(
+                      name: nameController.text,
+                      isPregnancy: true, // Default to true but it doesn't matter as much now
+                      dueDate: DateTime.now().add(Duration(days: 280)), // ~40 weeks for pregnancy
+                    );
+                    
+                    // Update the UI after successful Firebase operation
+                    setState(() {
+                      _babyProfiles.add(newProfile);
+                      _currentBabyProfileId = newProfile.id;
+                      _isLoading = false;
+                    });
+                    
+                    // Load data for the new profile
+                    await _loadSavedData();
+                    
+                    // Show success message
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('New profile created: ${newProfile.name}')),
+                    );
+                  } catch (e) {
+                    setState(() {
+                      _isLoading = false;
+                    });
+                    
+                    // Show error message
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error creating profile: ${e.toString()}')),
+                    );
+                  }
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Profile name cannot be empty.', style: GoogleFonts.poppins())),
@@ -691,6 +778,12 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
 
   // Method to show the points gained dialog
   Future<void> _showPointsGainedDialog() async {
+    // Get the current profile name
+    final currentProfile = _babyProfiles.firstWhere(
+      (p) => p.id == _currentBabyProfileId,
+      orElse: () => BabyProfile(id: "unknown", name: "Profile", isPregnancy: true),
+    );
+    
     return showDialog<void>(
       context: context,
       barrierDismissible: true, // User can tap outside to dismiss
@@ -740,9 +833,18 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  "You've earned 10 points!",
+                  "You earned 10 points!",
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[700]),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  "Total: $_userScore",
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Color(0xFF78A0E5),
+                  ),
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
@@ -799,24 +901,28 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
 
   @override
   Widget build(BuildContext context) {
-    developer.log("Building GrowthScreen. Profiles: ${_profiles.length}, CurrentID: $_currentProfileId, IsLoading: $_isLoading", name: "GrowthScreenBuild");
+    developer.log("Building GrowthScreen. Profiles: ${_babyProfiles.length}, CurrentID: $_currentBabyProfileId, IsLoading: $_isLoading", name: "GrowthScreenBuild");
     // Safely get the current profile, providing a fallback if needed.
-    UserProfile currentProfile = _profiles.firstWhere(
-      (p) => p.id == _currentProfileId,
-      orElse: () => _profiles.isNotEmpty 
-                   ? _profiles.first 
-                   : UserProfile(id: "default_fallback", name: "Profile"), // Fallback
+    BabyProfile currentProfile = _babyProfiles.firstWhere(
+      (p) => p.id == _currentBabyProfileId,
+      orElse: () => _babyProfiles.isNotEmpty 
+                   ? _babyProfiles.first 
+                   : BabyProfile(
+                       id: "default_fallback", 
+                       name: "Profile",
+                       isPregnancy: true
+                    ), // Fallback
     );
 
     // If current profile ID doesn't exist in the profiles list, correct it
-    if (_currentProfileId == null || 
-        (_profiles.isNotEmpty && !_profiles.any((p) => p.id == _currentProfileId))) {
+    if (_currentBabyProfileId == null || 
+        (_babyProfiles.isNotEmpty && !_babyProfiles.any((p) => p.id == _currentBabyProfileId))) {
       // Safely update to a valid profile
-      _currentProfileId = _profiles.isNotEmpty ? _profiles.first.id : "default";
+      _currentBabyProfileId = _babyProfiles.isNotEmpty ? _babyProfiles.first.id : "default";
       _saveData(); // Persist this correction
     }
 
-    List<DropdownMenuItem<String>> profileDropdownItems = _profiles.map((profile) {
+    List<DropdownMenuItem<String>> profileDropdownItems = _babyProfiles.map((profile) {
       return DropdownMenuItem<String>(
         value: profile.id,
         child: Row(
@@ -868,7 +974,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
         backgroundColor: const Color(0xFFAFC9F8),
         actions: [
           // Profile Dropdown - Enhanced UI
-          if (_profiles.isNotEmpty)
+          if (_babyProfiles.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2.0), // Minimal vertical padding
               child: Container(
@@ -887,11 +993,11 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                         child: DropdownButton<String>(
                           isDense: true, // This makes the dropdown more compact
                           isExpanded: true,
-                          value: _currentProfileId,
+                          value: _currentBabyProfileId,
                           icon: Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
                           selectedItemBuilder: (BuildContext context) {
-                            return _profiles.map<Widget>((UserProfile profile) {
-                              if (profile.id == _currentProfileId) {
+                            return _babyProfiles.map<Widget>((BabyProfile profile) {
+                              if (profile.id == _currentBabyProfileId) {
                                 return Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -913,7 +1019,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                             }).toList();
                           },
                           items: profileDropdownItems,
-                          onChanged: (String? selectedValue) {
+                          onChanged: (String? selectedValue) async {
                             // Important: First check if we need to add new profile
                             if (selectedValue == '__add_new__') {
                               _showAddProfileDialog();
@@ -921,50 +1027,42 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                             } 
                             
                             // Handle profile switching
-                            if (selectedValue != null && selectedValue != _currentProfileId) {
+                            if (selectedValue != null && selectedValue != _currentBabyProfileId) {
                               final String newProfileIdToLoad = selectedValue;
-                              // _currentProfileId currently holds the ID of the profile whose data is loaded.
+                              // _currentBabyProfileId currently holds the ID of the profile whose data is loaded.
 
                               setState(() { 
                                 _isLoading = true; // Show loading indicator immediately
                               });
 
-                              // 1. Save the data for the currently active profile (_currentProfileId).
-                              //    _saveData() saves _allDiaryEntries and settings using the current _currentProfileId.
-                              //    It ALSO saves this _currentProfileId as 'current_profile_id' in prefs for now.
-                              _saveData().then((_) {
-                                // Data for the *old* profile is now saved.
-                                // 'current_profile_id' in prefs temporarily points to the *old* profile.
-
-                                if (mounted) {
-                                  // 2. Update the application's current profile ID state.
-                                  setState(() {
-                                    _currentProfileId = newProfileIdToLoad;
-                                    // At this point, _allDiaryEntries and other settings in memory might still be for the old profile,
-                                    // but _currentProfileId is now for the new one.
-                                  });
-
-                                  // 3. Persist the NEW profile ID as the "current" one in SharedPreferences.
-                                  //    This OVERWRITES the 'current_profile_id' set by the previous _saveData() call.
-                                  SharedPreferences.getInstance().then((prefs) {
-                                    prefs.setString('current_profile_id', newProfileIdToLoad).then((_) {
-                                      if (mounted) {
-                                        // 4. Load the data for the new profile.
-                                        //    _loadSavedData will read the 'current_profile_id' we just set (newProfileIdToLoad),
-                                        //    and then load the corresponding diary entries and settings.
-                                        _loadSavedData(); // This will eventually set _isLoading = false and refresh UI.
-                                      }
-                                    });
-                                  });
-                                }
-                              });
+                              try {
+                                // 1. Save the current profile ID as the "current" one in Firestore
+                                await _babyProfileService.setCurrentBabyProfile(newProfileIdToLoad);
+                                
+                                // 2. Update the application's current profile ID state
+                                setState(() {
+                                  _currentBabyProfileId = newProfileIdToLoad;
+                                });
+                                
+                                // 3. Load the data for the new profile (including diary entries)
+                                await _loadSavedData();
+                              } catch (e) {
+                                // Handle errors during profile switching
+                                developer.log('Error switching profiles: $e', name: 'GrowthDevelopmentScreen');
+                                setState(() {
+                                  _isLoading = false;
+                                });
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error switching profiles: ${e.toString()}')),
+                                );
+                              }
                             }
                           },
                           dropdownColor: Colors.white,
                         ),
                       ),
                     ),
-                    if (_profiles.length > 1) // Only show delete if more than one profile
+                    if (_babyProfiles.length > 1) // Only show delete if more than one profile
                       Container(
                         width: 28, // Fixed width for the delete button area
                         child: IconButton(
@@ -1003,6 +1101,14 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                   // Save user preference
                   _saveData();
                 });
+                
+                // Force calendar state update to refresh markers
+                if (_pregnancyTabController?.index == 1 || _babyTrackerTabController?.index == 1) {
+                  // Only need to do this if we're on a diary tab that shows a calendar
+                  setState(() {
+                    // This empty setState will rebuild the widget and refresh calendar markers
+                  });
+                }
               },
               borderRadius: BorderRadius.circular(8.0),
               selectedBorderColor: Color(0xFF78A0E5),
@@ -1037,9 +1143,6 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
   }
 
   Widget _buildPregnancyModeContent() {
-    // return DefaultTabController( // Replaced with explicit controller
-    //   length: 2, 
-    //   child: Column(
     return Column(
       children: [
         TabBar(
@@ -1057,7 +1160,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
           ),
           tabs: const [
             Tab(text: 'Fetal Growth'),
-            Tab(text: 'Bump Diary'), 
+            Tab(text: 'Bump Diary'), // Specifically for pregnancy diary entries
           ],
         ),
         Expanded(
@@ -1071,14 +1174,9 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
         ),
       ],
     );
-    //   ),
-    // );
   }
 
   Widget _buildBabyTrackerModeContent() {
-    // return DefaultTabController( // Replaced with explicit controller
-    //   length: 2, 
-    //   child: Column(
     return Column(
       children: [
         TabBar(
@@ -1096,7 +1194,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
           ),
           tabs: const [
             Tab(text: 'Baby Growth'), 
-            Tab(text: 'Growth Diary'), 
+            Tab(text: 'Growth Diary'), // Specifically for baby growth diary entries
           ],
         ),
         Expanded(
@@ -1110,8 +1208,6 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
         ),
       ],
     );
-    //   ),
-    // );
   }
 
   Widget _buildFetalGrowthSection() {
@@ -1312,9 +1408,20 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
-        Text(
-          'Fetal Growth Chart',
-          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Fetal Growth Chart',
+              style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            // Add debug option to clear all entries
+            IconButton(
+              icon: Icon(Icons.cleaning_services_outlined, size: 18),
+              tooltip: 'Clear All Entries (Debug)',
+              onPressed: _clearAllDiaryEntries,
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         sortedEntries.isEmpty 
@@ -1427,7 +1534,21 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
     List<FlSpot> spots = [];
     List<DiaryEntry> chartableEntries = []; // To keep track of entries used for x-axis labels
 
-    for (var entry in allEntries) {
+    // Filter entries to only include fetal entries for the fetal growth chart
+    final List<DiaryEntry> fetalEntries = allEntries.where((entry) => entry.entryType == 'fetal').toList();
+    
+    // Debug: Log all fetal entries with size data to identify the problematic entry
+    developer.log('=== FETAL ENTRIES WITH SIZE DATA ===', name: 'GrowthChart');
+    for (var entry in fetalEntries) {
+      if (entry.fetalSize != null && entry.fetalSizeUnit != null) {
+        developer.log(
+          'Found entry with size: ${entry.fetalSize} ${entry.fetalSizeUnit}, date: ${entry.date}, title: ${entry.title}', 
+          name: 'GrowthChart'
+        );
+      }
+    }
+    
+    for (var entry in fetalEntries) {
       if (entry.fetalSize != null && entry.fetalSizeUnit != null) {
         double size = entry.fetalSize!; // Safe due to check
         if (entry.fetalSizeUnit == FetalSizeUnit.inch) { // entry.fetalSizeUnit is also non-null here
@@ -1437,6 +1558,9 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
         chartableEntries.add(entry);
       }
     }
+
+    // Debug: Log the spots and chartable entries
+    developer.log('Generated ${spots.length} spots for chart from ${chartableEntries.length} entries', name: 'GrowthChart');
 
     if (spots.isEmpty) {
       return Container(
@@ -1485,7 +1609,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                       ),
                     );
                   }
-                  return const SizedBox(); 
+                  return const SizedBox(); // Return empty widget for start/end values
                 },
               ),
             ),
@@ -1493,8 +1617,8 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
             rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)), 
           ),
           borderData: FlBorderData(show: true, border: Border.all(color: const Color(0xFF78A0E5), width: 1)),
-          minX: -0.1, 
-          maxX: chartableEntries.isNotEmpty ? chartableEntries.length.toDouble() - (chartableEntries.length > 1 ? 0.9 : 0.1) : 0, // Handle empty chartableEntries
+          minX: 0, // Changed from -0.1 to remove space at start
+          maxX: chartableEntries.isNotEmpty ? (chartableEntries.length - 1).toDouble() : 0, // Remove extra space at end
           minY: 0,
           lineBarsData: [
             LineChartBarData(
@@ -1520,12 +1644,15 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
   }
 
   Widget _buildBumpDiarySection() {
-    // Filter entries for the selected day
+    // Filter entries for the selected day AND current mode (pregnancy/baby)
     final entriesForSelectedDate = _allDiaryEntries
         .where((entry) =>
             entry.date.year == _selectedDiaryDate.year &&
             entry.date.month == _selectedDiaryDate.month &&
-            entry.date.day == _selectedDiaryDate.day)
+            entry.date.day == _selectedDiaryDate.day &&
+            // Filter by entry type based on current mode
+            ((_selectedMode == GrowthScreenMode.pregnancy && entry.entryType == 'fetal') ||
+             (_selectedMode == GrowthScreenMode.baby && entry.entryType == 'baby')))
         .toList();
 
     return Column(
@@ -1723,7 +1850,8 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                 final isSelected = day.year == _selectedDiaryDate.year &&
                                    day.month == _selectedDiaryDate.month &&
                                    day.day == _selectedDiaryDate.day;
-                final hasEntries = _allDiaryEntries.any((entry) => isSameDay(entry.date, day));
+                // Check if there are entries for this day that match the current mode
+                final hasEntries = _getEntriesForDay(day).isNotEmpty;
 
                 return GestureDetector(
                   onTap: () {
@@ -1791,9 +1919,32 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
   }
 
   List<DiaryEntry> _getEntriesForDay(DateTime day) {
-    return _allDiaryEntries.where((entry) {
-      return entry.date.year == day.year && entry.date.month == day.month && entry.date.day == day.day;
+    // Check if there are entries that match both the date and current mode
+    final filteredEntries = _allDiaryEntries.where((entry) {
+      final sameDateMatch = entry.date.year == day.year && 
+                         entry.date.month == day.month && 
+                         entry.date.day == day.day;
+                         
+      final correctTypeMatch = (_selectedMode == GrowthScreenMode.pregnancy && entry.entryType == 'fetal') ||
+                            (_selectedMode == GrowthScreenMode.baby && entry.entryType == 'baby');
+      
+      // For debugging, log when we find an entry but it's the wrong type
+      if (sameDateMatch && !correctTypeMatch && day.day == DateTime.now().day) {
+        developer.log(
+          'Found entry for ${DateFormat('MM/dd').format(day)} but wrong type: ${entry.entryType} (current mode: ${_selectedMode == GrowthScreenMode.pregnancy ? "pregnancy/fetal" : "baby"})',
+          name: 'Calendar'
+        );
+      } else if (sameDateMatch && correctTypeMatch && day.day == DateTime.now().day) {
+        developer.log(
+          'Found matching entry for ${DateFormat('MM/dd').format(day)} with type: ${entry.entryType}',
+          name: 'Calendar'
+        );
+      }
+      
+      return sameDateMatch && correctTypeMatch;
     }).toList();
+    
+    return filteredEntries;
   }
 
   Widget _buildMonthCalendarView() {
@@ -1894,13 +2045,21 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
     final ImagePicker picker = ImagePicker();
     final List<String> pregnancyStages = List.generate(42, (index) => "Week ${index + 1}");
 
+    // Determine entry type based on the current mode for clearer code
+    final String entryType = _selectedMode == GrowthScreenMode.pregnancy ? "fetal" : "baby";
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: Text("Add Diary Entry for ${DateFormat('MMM d, yyyy').format(_selectedDiaryDate)}", style: GoogleFonts.poppins()),
+              title: Text(
+                _selectedMode == GrowthScreenMode.pregnancy 
+                  ? "Add Bump Diary Entry for ${DateFormat('MMM d, yyyy').format(_selectedDiaryDate)}"
+                  : "Add Growth Diary Entry for ${DateFormat('MMM d, yyyy').format(_selectedDiaryDate)}", 
+                style: GoogleFonts.poppins()
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1949,150 +2108,21 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                     ),
                     const SizedBox(height: 10),
 
-                    // Pregnancy Mode Specific Fields
-                    if (_selectedMode == GrowthScreenMode.pregnancy) ...[
-                      // Pregnancy Stage Dropdown
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 15.0),
-                        // ... (pregnancy stage dropdown code)
-                        child: DropdownButton<String>(
-                            isExpanded: true,
-                            value: selectedPregnancyStage,
-                            hint: Text('Select Pregnancy Stage', style: GoogleFonts.poppins()),
-                            items: pregnancyStages.map((String stage) {
-                              return DropdownMenuItem<String>(value: stage, child: Text(stage, style: GoogleFonts.poppins()));
-                            }).toList(),
-                            onChanged: (String? value) {
-                              if (value != null) { setDialogState(() { selectedPregnancyStage = value; }); }
-                            },
-                          ),
-                      ),
-                      TextField(
-                        controller: moodController,
-                        decoration: InputDecoration(labelText: "Mood", hintText: "e.g., Happy, Tired", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
-                        style: GoogleFonts.poppins(),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: cravingsController,
-                        decoration: InputDecoration(labelText: "Cravings", hintText: "e.g., Pickles, Chocolate", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
-                        style: GoogleFonts.poppins(),
-                      ),
-                      const SizedBox(height: 10),
-                      // Fetal Size
-                      Row(
-                        // ... (fetal size input and unit dropdown code)
-                        children: [
-                        Expanded(
-                          flex: 3,
-                          child: TextField(
-                            controller: fetalSizeController,
-                            decoration: InputDecoration(labelText: "Fetal Size", hintText: "Enter size", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
-                            style: GoogleFonts.poppins(),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          flex: 2,
-                          child: Container(
-                            height: 59, // Match TextField height
-                            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(4)),
-                            child: Center(
-                              child: DropdownButton<FetalSizeUnit>(
-                                value: selectedFetalSizeUnit,
-                                underline: Container(),
-                                items: FetalSizeUnit.values.map((FetalSizeUnit unit) {
-                                  return DropdownMenuItem<FetalSizeUnit>(value: unit, child: Text(unit.name, style: GoogleFonts.poppins()));
-                                }).toList(),
-                                onChanged: (FetalSizeUnit? value) {
-                                  if (value != null) { setDialogState(() { selectedFetalSizeUnit = value; }); }
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      ),
-                    ],
-
-                    // Baby Tracker Mode Specific Fields
-                    if (_selectedMode == GrowthScreenMode.baby) ...[
-                      // Height
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: TextField(
-                              controller: heightController,
-                              decoration: InputDecoration(labelText: "Height", hintText: "Enter height", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
-                              style: GoogleFonts.poppins(),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            flex: 2,
-                            child: Container(
-                              height: 59, // Match TextField height
-                              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(4)),
-                              child: Center(
-                                child: DropdownButton<LengthUnit>(
-                                  value: selectedHeightUnit,
-                                  underline: Container(),
-                                  items: LengthUnit.values.map((LengthUnit unit) {
-                                    return DropdownMenuItem<LengthUnit>(value: unit, child: Text(unit.name, style: GoogleFonts.poppins()));
-                                  }).toList(),
-                                  onChanged: (LengthUnit? value) {
-                                    if (value != null) { setDialogState(() { selectedHeightUnit = value; }); }
-                                  },
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      // Weight
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: TextField(
-                              controller: weightController,
-                              decoration: InputDecoration(labelText: "Weight", hintText: "Enter weight", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
-                              style: GoogleFonts.poppins(),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            flex: 2,
-                            child: Container(
-                              height: 59, // Match TextField height
-                              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(4)),
-                              child: Center(
-                                child: DropdownButton<WeightUnit>(
-                                  value: selectedWeightUnit,
-                                  underline: Container(),
-                                  items: WeightUnit.values.map((WeightUnit unit) {
-                                    return DropdownMenuItem<WeightUnit>(value: unit, child: Text(unit.name, style: GoogleFonts.poppins()));
-                                  }).toList(),
-                                  onChanged: (WeightUnit? value) {
-                                    if (value != null) { setDialogState(() { selectedWeightUnit = value; }); }
-                                  },
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                    // Mode-specific fields
+                    ..._buildModeSpecificFields(
+                      setDialogState, 
+                      entryType,
+                      moodController, 
+                      cravingsController, 
+                      fetalSizeController, 
+                      heightController, 
+                      weightController, 
+                      selectedFetalSizeUnit, 
+                      selectedHeightUnit, 
+                      selectedWeightUnit, 
+                      selectedPregnancyStage,
+                      pregnancyStages
+                    ),
                   ],
                 ),
               ),
@@ -2103,15 +2133,19 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                 ),
                 ElevatedButton(
                   child: Text("Save Entry", style: GoogleFonts.poppins()),
-                  onPressed: () {
-                    if (titleController.text.isEmpty) { // Check title instead
+                  onPressed: () async {
+                    if (titleController.text.isEmpty) {
                        if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Title cannot be empty!", style: GoogleFonts.poppins()))); }
                        return;
                     }
-                    if (descriptionController.text.isEmpty) { // Also check description
+                    if (descriptionController.text.isEmpty) {
                        if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Description cannot be empty!", style: GoogleFonts.poppins()))); }
                        return;
                     }
+
+                    // Capture scaffold messenger before closing dialog
+                    final scaffoldMessenger = ScaffoldMessenger.of(context);
+                    Navigator.of(context).pop(); // Close dialog
 
                     final DateTime entryDate = DateTime(_selectedDiaryDate.year, _selectedDiaryDate.month, _selectedDiaryDate.day);
                     DiaryEntry newEntry;
@@ -2126,9 +2160,10 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                         imagePath: selectedImagePath,
                         title: titleController.text,
                         description: descriptionController.text,
+                        entryType: "fetal", // Explicitly mark as fetal
                         mood: moodController.text.isNotEmpty ? moodController.text : "Not specified",
                         cravings: cravingsController.text.isNotEmpty ? cravingsController.text : "None",
-                        fetalSize: fetalSize,
+                        fetalSize: fetalSize > 0 ? fetalSize : null, // Only set non-zero values
                         fetalSizeUnit: selectedFetalSizeUnit,
                         pregnancyStage: selectedPregnancyStage,
                       );
@@ -2146,20 +2181,78 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                         imagePath: selectedImagePath,
                         title: titleController.text,
                         description: descriptionController.text,
-                        height: height,
+                        entryType: "baby", // Explicitly mark as baby
+                        height: height > 0 ? height : null, // Only set non-zero values
                         heightUnit: selectedHeightUnit,
-                        weight: weight,
+                        weight: weight > 0 ? weight : null, // Only set non-zero values
                         weightUnit: selectedWeightUnit,
                       );
                     }
 
-                    setState(() {
-                      _allDiaryEntries.add(newEntry);
-                      _userScore += 10;
-                      _saveData();
-                      _fetchAndSetAiInsights();
-                    });
-                    if (context.mounted) { Navigator.of(context).pop(); _showPointsGainedDialog(); }
+                    try {
+                      // Show loading state
+                      scaffoldMessenger.showSnackBar(
+                        SnackBar(content: Row(
+                          children: [
+                            CircularProgressIndicator(color: Colors.white),
+                            SizedBox(width: 16),
+                            Text("Saving entry...")
+                          ],
+                        ))
+                      );
+
+                      // Save to Firebase using our service
+                      if (_currentBabyProfileId != null) {
+                        // Log the key information before saving
+                        developer.log(
+                          'Saving ${entryType} entry for date ${entryDate}, profile $_currentBabyProfileId',
+                          name: 'GrowthDevelopmentScreen'
+                        );
+                        
+                        await _diaryService.saveDiaryEntry(_currentBabyProfileId!, newEntry);
+                        
+                        // Add points to the profile in Firebase
+                        await _babyProfileService.addPointsToProfile(_currentBabyProfileId!, 10);
+                        
+                        // Update local state only after successful Firebase save
+                        setState(() {
+                          // Remove any existing entries for the same day and type (if any)
+                          _allDiaryEntries.removeWhere((entry) => 
+                            entry.date.year == newEntry.date.year && 
+                            entry.date.month == newEntry.date.month &&
+                            entry.date.day == newEntry.date.day &&
+                            entry.entryType == newEntry.entryType
+                          );
+                          
+                          // Add the new entry to local state
+                          _allDiaryEntries.add(newEntry);
+                          
+                          // Update user score for gamification (local UI only)
+                          _userScore += 10;
+                        });
+                        
+                        // Save user score to SharedPreferences
+                        _saveData();
+                        
+                        // Fetch new AI insights with the updated data
+                        _fetchAndSetAiInsights();
+                        
+                        // Log success
+                        developer.log("Successfully saved diary entry to Firebase and updated points", name: "GrowthDevelopmentScreen");
+                      } else {
+                        throw Exception("No baby profile selected");
+                      }
+                      
+                      _showPointsGainedDialog();
+                    } catch (e) {
+                      // Log the error
+                      developer.log("Error saving diary entry: $e", name: "GrowthDevelopmentScreen", error: e);
+                      
+                      // Show error message
+                      scaffoldMessenger.showSnackBar(
+                        SnackBar(content: Text("Error saving entry: ${e.toString()}"))
+                      );
+                    }
                   },
                 ),
               ],
@@ -2170,9 +2263,255 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
     );
   }
 
+  // Helper method to build mode-specific input fields
+  List<Widget> _buildModeSpecificFields(
+    StateSetter setState, 
+    String entryType,
+    TextEditingController moodController,
+    TextEditingController cravingsController,
+    TextEditingController fetalSizeController,
+    TextEditingController heightController,
+    TextEditingController weightController,
+    FetalSizeUnit selectedFetalSizeUnit,
+    LengthUnit selectedHeightUnit,
+    WeightUnit selectedWeightUnit,
+    String? selectedPregnancyStage,
+    List<String> pregnancyStages,
+  ) {
+    if (entryType == "fetal") {
+      // Pregnancy-specific fields
+      return [
+        // Pregnancy Stage Dropdown
+        Container(
+          margin: const EdgeInsets.only(bottom: 15.0),
+          child: DropdownButton<String>(
+            isExpanded: true,
+            value: selectedPregnancyStage,
+            hint: Text('Select Pregnancy Stage', style: GoogleFonts.poppins()),
+            items: pregnancyStages.map((String stage) {
+              return DropdownMenuItem<String>(value: stage, child: Text(stage, style: GoogleFonts.poppins()));
+            }).toList(),
+            onChanged: (String? value) {
+              if (value != null) { setState(() { selectedPregnancyStage = value; }); }
+            },
+          ),
+        ),
+        TextField(
+          controller: moodController,
+          decoration: InputDecoration(labelText: "Mood", hintText: "e.g., Happy, Tired", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
+          style: GoogleFonts.poppins(),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: cravingsController,
+          decoration: InputDecoration(labelText: "Cravings", hintText: "e.g., Pickles, Chocolate", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
+          style: GoogleFonts.poppins(),
+        ),
+        const SizedBox(height: 10),
+        // Fetal Size
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: TextField(
+                controller: fetalSizeController,
+                decoration: InputDecoration(labelText: "Fetal Size", hintText: "Enter size", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+                style: GoogleFonts.poppins(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 2,
+              child: Container(
+                height: 59, // Match TextField height
+                decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(4)),
+                child: Center(
+                  child: DropdownButton<FetalSizeUnit>(
+                    value: selectedFetalSizeUnit,
+                    underline: Container(),
+                    items: FetalSizeUnit.values.map((FetalSizeUnit unit) {
+                      return DropdownMenuItem<FetalSizeUnit>(value: unit, child: Text(unit.name, style: GoogleFonts.poppins()));
+                    }).toList(),
+                    onChanged: (FetalSizeUnit? value) {
+                      if (value != null) { setState(() { selectedFetalSizeUnit = value; }); }
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ];
+    } else {
+      // Baby-specific fields
+      return [
+        // Height
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: TextField(
+                controller: heightController,
+                decoration: InputDecoration(labelText: "Height", hintText: "Enter height", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+                style: GoogleFonts.poppins(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 2,
+              child: Container(
+                height: 59, // Match TextField height
+                decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(4)),
+                child: Center(
+                  child: DropdownButton<LengthUnit>(
+                    value: selectedHeightUnit,
+                    underline: Container(),
+                    items: LengthUnit.values.map((LengthUnit unit) {
+                      return DropdownMenuItem<LengthUnit>(value: unit, child: Text(unit.name, style: GoogleFonts.poppins()));
+                    }).toList(),
+                    onChanged: (LengthUnit? value) {
+                      if (value != null) { setState(() { selectedHeightUnit = value; }); }
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // Weight
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: TextField(
+                controller: weightController,
+                decoration: InputDecoration(labelText: "Weight", hintText: "Enter weight", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+                style: GoogleFonts.poppins(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 2,
+              child: Container(
+                height: 59, // Match TextField height
+                decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(4)),
+                child: Center(
+                  child: DropdownButton<WeightUnit>(
+                    value: selectedWeightUnit,
+                    underline: Container(),
+                    items: WeightUnit.values.map((WeightUnit unit) {
+                      return DropdownMenuItem<WeightUnit>(value: unit, child: Text(unit.name, style: GoogleFonts.poppins()));
+                    }).toList(),
+                    onChanged: (WeightUnit? value) {
+                      if (value != null) { setState(() { selectedWeightUnit = value; }); }
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ];
+    }
+  }
+
+  void _confirmDeleteEntry(BuildContext context, DiaryEntry entry) {
+    // Implement the confirmation dialog
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text("Confirm Deletion", style: GoogleFonts.poppins()),
+          content: Text("Are you sure you want to delete this entry?", style: GoogleFonts.poppins()),
+          actions: <Widget>[
+            TextButton(
+              child: Text("Cancel", style: GoogleFonts.poppins()),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+            ),
+            TextButton(
+              child: Text("Delete", style: GoogleFonts.poppins()),
+              onPressed: () async {
+                // Get a reference to the outer scaffold messenger before closing the dialog
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                
+                // Close the dialog
+                Navigator.of(dialogContext).pop();
+                
+                // Show loading indicator using the saved scaffold messenger
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(content: Row(
+                    children: [
+                      CircularProgressIndicator(color: Colors.white),
+                      SizedBox(width: 16),
+                      Text("Deleting entry...")
+                    ],
+                  ))
+                );
+                
+                try {
+                  // First delete from Firebase
+                  if (_currentBabyProfileId != null) {
+                    await _diaryService.deleteDiaryEntry(_currentBabyProfileId!, entry);
+                    
+                    // Then update local state
+                    setState(() {
+                      _allDiaryEntries.removeWhere((e) => 
+                        e.date.year == entry.date.year && 
+                        e.date.month == entry.date.month && 
+                        e.date.day == entry.date.day &&
+                        e.entryType == entry.entryType // Only remove entries of the same type
+                      );
+                    });
+                    
+                    // Refresh AI insights
+                    _fetchAndSetAiInsights();
+                    
+                    // Show success message
+                    scaffoldMessenger.clearSnackBars();
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(content: Text("Entry deleted successfully"))
+                    );
+                    
+                    // Log success
+                    developer.log("Successfully deleted diary entry from Firebase and updated local state", name: "GrowthDevelopmentScreen");
+                  } else {
+                    throw Exception("No baby profile selected");
+                  }
+                } catch (e) {
+                  // Log the error
+                  developer.log("Error deleting diary entry: $e", name: "GrowthDevelopmentScreen", error: e);
+                  
+                  // Show error message
+                  scaffoldMessenger.clearSnackBars();
+                  scaffoldMessenger.showSnackBar(
+                    SnackBar(content: Text("Error deleting entry: ${e.toString()}"))
+                  );
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildBabyGrowthChartsSection() {
     // Filter entries that have height or weight data (typically from Baby mode)
-    final babyEntries = _allDiaryEntries.where((entry) => entry.height != null || entry.weight != null).toList();
+    // Only include entries with entryType = "baby"
+    final babyEntries = _allDiaryEntries.where((entry) => 
+      entry.entryType == 'baby' && (entry.height != null || entry.weight != null)
+    ).toList();
     babyEntries.sort((a, b) => a.date.compareTo(b.date));
 
     List<FlSpot> heightSpots = [];
@@ -2234,7 +2573,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                       DateTime date = entriesForAxis[value.toInt()].date;
                       return Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(DateFormat('dd/MM').format(date), style: GoogleFonts.poppins(fontSize: 10)));
                     }
-                    return const SizedBox();
+                    return const SizedBox(); // Return empty widget for start/end values
                   },
                 ),
               ),
@@ -2242,7 +2581,8 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
               rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
             ),
             borderData: FlBorderData(show: true, border: Border.all(color: const Color(0xFF78A0E5), width: 1)),
-            minX: -0.1, maxX: spots.length.toDouble() - (spots.length > 1 ? 0.9 : 0.1),
+            minX: 0, // Changed from -0.1 to remove space at start
+            maxX: spots.isNotEmpty ? (spots.length - 1).toDouble() : 0, // Remove extra space at end
             minY: 0,
             maxY: maxY,
             lineBarsData: [
@@ -2368,37 +2708,209 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
     );
   }
 
-  void _confirmDeleteEntry(BuildContext context, DiaryEntry entry) {
-    // Implement the confirmation dialog
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text("Confirm Deletion", style: GoogleFonts.poppins()),
-          content: Text("Are you sure you want to delete this entry?", style: GoogleFonts.poppins()),
-          actions: <Widget>[
-            TextButton(
-              child: Text("Cancel", style: GoogleFonts.poppins()),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+  // Change the current baby profile
+  Future<void> _changeCurrentBabyProfile(String profileId) async {
+    if (!_babyProfileService.isUserLoggedIn) return;
+    
+    try {
+      // Save the current preference to Firebase
+      await _babyProfileService.setCurrentBabyProfile(profileId);
+      
+      // Update local state
+      setState(() {
+        _currentBabyProfileId = profileId;
+        _isLoading = true; // Will reload data for the new profile
+      });
+      
+      // Reload data for the new profile
+      await _loadSavedData();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error changing profile: ${e.toString()}')),
+      );
+    }
+  }
+
+  // Create a new baby profile
+  Future<void> _createNewBabyProfile(String name, bool isPregnancy, {DateTime? dateOfBirth, DateTime? dueDate}) async {
+    if (!_babyProfileService.isUserLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('You must be logged in to create a profile')),
+      );
+      return;
+    }
+    
+    try {
+      final newProfile = await _babyProfileService.createBabyProfile(
+        name: name,
+        isPregnancy: isPregnancy,
+        dateOfBirth: dateOfBirth,
+        dueDate: dueDate,
+      );
+      
+      // Update local state
+      setState(() {
+        _babyProfiles.add(newProfile);
+        _currentBabyProfileId = newProfile.id;
+        _isLoading = true; // Will reload data for the new profile
+      });
+      
+      // Set as current profile
+      await _babyProfileService.setCurrentBabyProfile(newProfile.id);
+      
+      // Reload data for the new profile
+      await _loadSavedData();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('New profile created: ${newProfile.name}')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error creating profile: ${e.toString()}')),
+      );
+    }
+  }
+
+  // Update the current baby profile
+  Future<void> _updateBabyProfile(BabyProfile updatedProfile) async {
+    if (!_babyProfileService.isUserLoggedIn) return;
+    
+    try {
+      // Update in Firebase
+      await _babyProfileService.updateBabyProfile(updatedProfile);
+      
+      // Update local state
+      setState(() {
+        final index = _babyProfiles.indexWhere((p) => p.id == updatedProfile.id);
+        if (index != -1) {
+          _babyProfiles[index] = updatedProfile;
+        }
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Profile updated: ${updatedProfile.name}')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating profile: ${e.toString()}')),
+      );
+    }
+  }
+
+  // New function to clear all diary entries for debugging purposes
+  Future<void> _clearAllDiaryEntries() async {
+    if (_currentBabyProfileId == null || !_diaryService.isUserLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No profile selected or user not logged in'))
+      );
+      return;
+    }
+
+    try {
+      // Show confirmation dialog
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: Text('Clear All Diary Entries', style: GoogleFonts.poppins()),
+            content: Text(
+              'This will delete ALL diary entries for the current profile. This action cannot be undone.',
+              style: GoogleFonts.poppins(),
             ),
-            TextButton(
-              child: Text("Delete", style: GoogleFonts.poppins()),
-              onPressed: () {
-                setState(() {
-                  _allDiaryEntries.remove(entry);
-                  // Save changes
-                  _saveData();
-                  // Refresh AI insights
-                  _fetchAndSetAiInsights();
-                });
-                Navigator.of(context).pop();
-              },
-            ),
+            actions: [
+              TextButton(
+                child: Text('Cancel', style: GoogleFonts.poppins()),
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+              ),
+              TextButton(
+                child: Text(
+                  'Delete All',
+                  style: GoogleFonts.poppins(color: Colors.red),
+                ),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+              ),
+            ],
+          );
+        },
+      ) ?? false;
+
+      if (!confirmed) return;
+
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Row(
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(width: 16),
+            Text("Clearing entries...")
           ],
+        ))
+      );
+
+      // Delete all entries in Firebase
+      await _diaryService.deleteAllDiaryEntries(_currentBabyProfileId!);
+      
+      // Clear local state
+      setState(() {
+        _allDiaryEntries.clear();
+      });
+
+      // Show success message
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('All diary entries cleared successfully'))
+      );
+
+      // Refresh the UI
+      await _loadSavedData();
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error clearing entries: ${e.toString()}'))
+      );
+      developer.log('Error clearing diary entries: $e', name: 'GrowthDevelopmentScreen');
+    }
+  }
+
+  // New method to specifically refresh diary entries for the current profile
+  Future<void> _refreshDiaryEntries() async {
+    if (_currentBabyProfileId == null || !_diaryService.isUserLoggedIn) {
+      developer.log('Cannot refresh diary entries: No profile selected or user not logged in', name: 'GrowthDevelopmentScreen');
+      return;
+    }
+    
+    try {
+      // Show loading indicator
+      setState(() { 
+        _isLoading = true;
+      });
+      
+      developer.log('Refreshing diary entries for profile: $_currentBabyProfileId', name: 'GrowthDevelopmentScreen');
+      
+      // Fetch entries from Firebase
+      final entries = await _diaryService.getDiaryEntries(_currentBabyProfileId!);
+      
+      // Update the local state with fresh data
+      setState(() {
+        _allDiaryEntries.clear();
+        _allDiaryEntries.addAll(entries);
+        _isLoading = false;
+      });
+      
+      // Log results
+      final fetalEntries = entries.where((e) => e.entryType == 'fetal').length;
+      final babyEntries = entries.where((e) => e.entryType == 'baby').length;
+      developer.log('Refreshed diary entries: fetal=$fetalEntries, baby=$babyEntries', name: 'GrowthDevelopmentScreen');
+      
+    } catch (e) {
+      developer.log('Error refreshing diary entries: $e', name: 'GrowthDevelopmentScreen');
+      if (mounted) {
+        setState(() { _isLoading = false; });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading diary entries: ${e.toString().substring(0, math.min(e.toString().length, 50))}...'))
         );
-      },
-    );
+      }
+    }
   }
 } 

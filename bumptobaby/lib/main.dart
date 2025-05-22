@@ -2,8 +2,11 @@ import 'package:bumptobaby/screens/health_help_page.dart';
 import 'package:bumptobaby/screens/health_survey_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:developer' as developer;
 import 'firebase_options.dart';
 import 'package:bumptobaby/screens/signup_screen.dart';
 import 'package:bumptobaby/screens/login_screen.dart';
@@ -12,12 +15,51 @@ import 'package:bumptobaby/screens/family_planning_screen.dart';
 import 'package:bumptobaby/screens/growth_development_screen.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  runApp(MyApp());
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    developer.log('Loading environment variables', name: 'App.main');
+    await dotenv.load();
+    
+    developer.log('Initializing Firebase', name: 'App.main');
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    
+    // Verify Firebase initialization
+    final auth = FirebaseAuth.instance;
+    final firestore = FirebaseFirestore.instance;
+    
+    developer.log('Firebase initialized successfully. Auth instance: ${auth.app.name}, Firestore instance: ${firestore.app.name}', name: 'App.main');
+    
+    // Enable Firestore logging in debug mode
+    FirebaseFirestore.instance.settings = Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+    
+    developer.log('Firestore settings configured', name: 'App.main');
+    
+    // Log current user state
+    if (auth.currentUser != null) {
+      developer.log('Current user logged in: ${auth.currentUser!.uid}', name: 'App.main');
+      
+      // Print the user ID and data path for debugging Firebase rules
+      print('====== FIREBASE DEBUG INFO ======');
+      print('User ID: ${auth.currentUser!.uid}');
+      print('User document path: users/${auth.currentUser!.uid}');
+      print('Baby profiles path: users/${auth.currentUser!.uid}/babyProfiles');
+      print('Diary entries path example: users/${auth.currentUser!.uid}/babyProfiles/{profileId}/diaryEntries');
+      print('================================');
+    } else {
+      developer.log('No user currently logged in', name: 'App.main');
+    }
+    
+    runApp(MyApp());
+  } catch (e, stackTrace) {
+    developer.log('Error initializing app: $e', name: 'App.main', error: e, stackTrace: stackTrace);
+    // Still attempt to run the app even if there was an error
+    runApp(MyApp());
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -38,16 +80,26 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _checkFirstLaunch() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isFirstLaunch = prefs.getBool('is_first_launch') ?? true;
-    
-    setState(() {
-      _isFirstLaunch = isFirstLaunch;
-      _isLoading = false;
-    });
-    
-    if (isFirstLaunch) {
-      await prefs.setBool('is_first_launch', false);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isFirstLaunch = prefs.getBool('is_first_launch') ?? true;
+      
+      setState(() {
+        _isFirstLaunch = isFirstLaunch;
+        _isLoading = false;
+      });
+      
+      if (isFirstLaunch) {
+        await prefs.setBool('is_first_launch', false);
+      }
+      
+      // Log the launch state
+      developer.log('App launch state: ${isFirstLaunch ? "First Launch" : "Returning User"}', name: 'MyApp');
+    } catch (e) {
+      developer.log('Error checking first launch: $e', name: 'MyApp');
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
