@@ -30,6 +30,13 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
   final TextEditingController _healthConditionsController = TextEditingController();
   final TextEditingController _allergiesController = TextEditingController();
   final TextEditingController _medicationsController = TextEditingController();
+  final TextEditingController _parentConcernsController = TextEditingController();
+  final TextEditingController _lifestyleController = TextEditingController();
+  final TextEditingController _babyEnvironmentController = TextEditingController();
+  int _mentalHealthScore = 5;
+  int _energyLevel = 5;
+  String? _mood;
+  final List<String> _moodOptions = ['Happy', 'Calm', 'Tired', 'Anxious', 'Stressed', 'Sad'];
   bool _isLoading = false;
   bool _isLoadingExistingData = false;
 
@@ -80,6 +87,34 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
           if (latestSurvey.medications != null) {
             _medicationsController.text = latestSurvey.medications!.join(', ');
           }
+          
+          if (latestSurvey.parentConcerns != null) {
+            _parentConcernsController.text = latestSurvey.parentConcerns!.join(', ');
+          }
+          
+          if (latestSurvey.lifestyle != null) {
+            _lifestyleController.text = latestSurvey.lifestyle!.entries
+                .map((e) => "${e.key}: ${e.value}")
+                .join(', ');
+          }
+          
+          if (latestSurvey.babyEnvironment != null) {
+            _babyEnvironmentController.text = latestSurvey.babyEnvironment!.entries
+                .map((e) => "${e.key}: ${e.value}")
+                .join(', ');
+          }
+          
+          if (latestSurvey.mentalHealthScore != null) {
+            _mentalHealthScore = latestSurvey.mentalHealthScore!;
+          }
+          
+          if (latestSurvey.energyLevel != null) {
+            _energyLevel = latestSurvey.energyLevel!;
+          }
+          
+          if (latestSurvey.mood != null) {
+            _mood = latestSurvey.mood;
+          }
         });
       }
     } catch (e) {
@@ -100,6 +135,9 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
     _healthConditionsController.dispose();
     _allergiesController.dispose();
     _medicationsController.dispose();
+    _parentConcernsController.dispose();
+    _lifestyleController.dispose();
+    _babyEnvironmentController.dispose();
     super.dispose();
   }
 
@@ -183,7 +221,34 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
         return;
       }
 
-      // Create survey object
+      Map<String, dynamic>? lifestyle;
+      if (_lifestyleController.text.isNotEmpty) {
+        lifestyle = {};
+        final items = _lifestyleController.text.split(',');
+        for (var item in items) {
+          final parts = item.split(':');
+          if (parts.length == 2) {
+            lifestyle[parts[0].trim()] = parts[1].trim();
+          } else {
+            lifestyle[item.trim()] = true;
+          }
+        }
+      }
+
+      Map<String, dynamic>? babyEnvironment;
+      if (_babyEnvironmentController.text.isNotEmpty) {
+        babyEnvironment = {};
+        final items = _babyEnvironmentController.text.split(',');
+        for (var item in items) {
+          final parts = item.split(':');
+          if (parts.length == 2) {
+            babyEnvironment[parts[0].trim()] = parts[1].trim();
+          } else {
+            babyEnvironment[item.trim()] = true;
+          }
+        }
+      }
+
       final survey = HealthSurvey(
         userId: user.uid,
         isPregnant: _isPregnant,
@@ -206,12 +271,19 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
             ? _medicationsController.text.split(',').map((e) => e.trim()).toList()
             : null,
         createdAt: DateTime.now(),
+        parentConcerns: _parentConcernsController.text.isNotEmpty
+            ? _parentConcernsController.text.split(',').map((e) => e.trim()).toList()
+            : null,
+        lifestyle: lifestyle,
+        babyEnvironment: babyEnvironment,
+        mentalHealthScore: _mentalHealthScore,
+        energyLevel: _energyLevel,
+        mood: _mood,
+        lastMentalHealthCheckIn: DateTime.now(),
       );
 
-      // Save survey to Firestore first
       await _healthScheduleService.saveHealthSurvey(survey);
 
-      // Generate health schedule using AI with a timeout and error handling
       HealthSchedule schedule;
       try {
         schedule = await _healthAIService.generateHealthSchedule(survey, user.uid)
@@ -225,71 +297,204 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
               }
             );
       } on TimeoutException catch (_) {
-        // Log the timeout
         if (kDebugMode) {
           print('Timeout occurred during schedule generation');
         }
         
-        // Create a basic schedule with some default items
         final now = DateTime.now();
-        schedule = HealthSchedule(
-          userId: user.uid,
-          items: [
+        
+        // Create a more comprehensive fallback schedule
+        List<HealthScheduleItem> fallbackItems = [
+          HealthScheduleItem(
+            title: 'Health Check-up',
+            description: 'Regular health consultation with your healthcare provider.',
+            scheduledDate: now.add(Duration(days: 30)),
+            category: 'checkup',
+          ),
+          HealthScheduleItem(
+            title: 'Health Profile Review',
+            description: 'Review and update your health profile.',
+            scheduledDate: now.add(Duration(days: 15)),
+            category: 'milestone',
+          ),
+        ];
+        
+        // Add personalized items based on survey data
+        if (survey.isPregnant) {
+          fallbackItems.add(
             HealthScheduleItem(
-              title: 'Health Check-up',
-              description: 'Regular health consultation with your healthcare provider.',
+              title: 'Prenatal Vitamins',
+              description: 'Daily prenatal vitamin intake is essential for your baby\'s development.',
+              scheduledDate: now,
+              category: 'supplement',
+            ),
+          );
+          
+          // Add risk alert for pregnant women
+          fallbackItems.add(
+            HealthScheduleItem(
+              title: 'Monitor for Pregnancy Warning Signs',
+              description: 'Watch for severe headaches, vision changes, sudden swelling, or abdominal pain. Contact your doctor immediately if these occur.',
+              scheduledDate: now,
+              category: 'risk_alert',
+              severity: 'medium',
+              additionalData: {
+                'symptoms': 'Severe headaches, vision changes, sudden swelling, abdominal pain',
+                'action': 'Contact healthcare provider immediately'
+              },
+            ),
+          );
+          
+          // Add prediction for pregnant women
+          fallbackItems.add(
+            HealthScheduleItem(
+              title: 'Prepare for Next Trimester',
+              description: 'As your pregnancy progresses, you\'ll need comfortable clothes, supportive pillows, and may want to start planning your nursery.',
+              scheduledDate: now.add(Duration(days: 30)),
+              category: 'prediction',
+              additionalData: {
+                'essentials': 'Comfortable clothes, supportive pillows, nursery items',
+                'timing': 'Coming weeks'
+              },
+            ),
+          );
+          
+          // Add mental health check if needed
+          if (survey.mentalHealthScore != null && survey.mentalHealthScore! < 5 || 
+              survey.mood == 'Anxious' || survey.mood == 'Stressed' || survey.mood == 'Sad') {
+            fallbackItems.add(
+              HealthScheduleItem(
+                title: 'Mental Health Support',
+                description: 'Based on your survey, consider speaking with a mental health professional about your feelings during pregnancy.',
+                scheduledDate: now.add(Duration(days: 7)),
+                category: 'risk_alert',
+                severity: 'medium',
+                additionalData: {
+                  'reason': 'Mental health concerns noted in survey',
+                  'action': 'Schedule appointment with mental health professional'
+                },
+              ),
+            );
+          }
+        } else if (survey.babyBirthDate != null) {
+          // Calculate baby's age in months
+          final babyAgeInDays = now.difference(survey.babyBirthDate!).inDays;
+          final babyAgeInMonths = (babyAgeInDays / 30.44).floor();
+          
+          fallbackItems.add(
+            HealthScheduleItem(
+              title: 'Pediatric Check-up',
+              description: 'Regular health assessment for your baby.',
               scheduledDate: now.add(Duration(days: 30)),
               category: 'checkup',
             ),
+          );
+          
+          // Add risk alert for babies
+          fallbackItems.add(
             HealthScheduleItem(
-              title: 'Health Profile Review',
-              description: 'Review and update your health profile.',
+              title: 'Monitor Baby\'s Development',
+              description: 'Watch for developmental milestones and consult your pediatrician if you notice delays.',
               scheduledDate: now.add(Duration(days: 15)),
-              category: 'milestone',
+              category: 'risk_alert',
+              severity: 'low',
+              additionalData: {
+                'focus': 'Developmental milestones',
+                'action': 'Consult pediatrician if concerned'
+              },
             ),
-          ],
+          );
+          
+          // Add prediction for babies
+          fallbackItems.add(
+            HealthScheduleItem(
+              title: babyAgeInMonths < 6 ? 'Prepare for Solid Foods' : 'Prepare for Mobility',
+              description: babyAgeInMonths < 6 
+                  ? 'Your baby will likely be ready to start solid foods soon. Consider getting baby feeding supplies.'
+                  : 'Your baby will become more mobile soon. Ensure your home is baby-proofed.',
+              scheduledDate: now.add(Duration(days: 30)),
+              category: 'prediction',
+              additionalData: {
+                'essentials': babyAgeInMonths < 6 ? 'Baby spoons, bibs, first foods' : 'Baby-proofing supplies',
+                'timing': 'Coming weeks'
+              },
+            ),
+          );
+          
+          // Add specific item for parent concerns if provided
+          if (survey.parentConcerns != null && survey.parentConcerns!.isNotEmpty) {
+            fallbackItems.add(
+              HealthScheduleItem(
+                title: 'Address Parent Concerns',
+                description: 'Discuss your concerns (${survey.parentConcerns!.join(", ")}) with your pediatrician at your next visit.',
+                scheduledDate: now.add(Duration(days: 14)),
+                category: 'risk_alert',
+                severity: 'medium',
+                additionalData: {
+                  'concerns': survey.parentConcerns!.join(", "),
+                  'action': 'Discuss with pediatrician'
+                },
+              ),
+            );
+          }
+        }
+        
+        schedule = HealthSchedule(
+          userId: user.uid,
+          items: fallbackItems,
           generatedAt: now,
         );
       } catch (e) {
-        // Log any other errors during AI generation
         if (kDebugMode) {
           print("AI generation failed: $e");
         }
         
-        // Create a basic schedule with some default items
         final now = DateTime.now();
+        
+        // Create a basic fallback schedule
+        List<HealthScheduleItem> fallbackItems = [
+          HealthScheduleItem(
+            title: 'Health Check-up',
+            description: 'Regular health consultation with your healthcare provider.',
+            scheduledDate: now.add(Duration(days: 30)),
+            category: 'checkup',
+          ),
+          HealthScheduleItem(
+            title: 'Health Profile Review',
+            description: 'Review and update your health profile.',
+            scheduledDate: now.add(Duration(days: 15)),
+            category: 'milestone',
+          ),
+          HealthScheduleItem(
+            title: 'Health Alert',
+            description: 'Monitor your health and contact your healthcare provider if you have concerns.',
+            scheduledDate: now,
+            category: 'risk_alert',
+            severity: 'medium',
+          ),
+          HealthScheduleItem(
+            title: 'Upcoming Needs',
+            description: 'Prepare for your healthcare journey by staying informed and planning ahead.',
+            scheduledDate: now.add(Duration(days: 7)),
+            category: 'prediction',
+          ),
+        ];
+        
         schedule = HealthSchedule(
           userId: user.uid,
-          items: [
-            HealthScheduleItem(
-              title: 'Health Check-up',
-              description: 'Regular health consultation with your healthcare provider.',
-              scheduledDate: now.add(Duration(days: 30)),
-              category: 'checkup',
-            ),
-            HealthScheduleItem(
-              title: 'Health Profile Review',
-              description: 'Review and update your health profile.',
-              scheduledDate: now.add(Duration(days: 15)),
-              category: 'milestone',
-            ),
-          ],
+          items: fallbackItems,
           generatedAt: now,
         );
       }
 
-      // Save schedule to Firestore
       await _healthScheduleService.saveHealthSchedule(schedule);
 
-      // Return to previous screen if updating
       if (widget.isUpdate) {
         if (!mounted) return;
-        Navigator.pop(context, true); // Return true to indicate update was successful
+        Navigator.pop(context, true);
       } else {
-        // Navigate to schedule screen
         if (!mounted) return;
         
-        // Use a lightweight approach to navigate to avoid UI freezes
         Future.microtask(() {
           Navigator.push(
             context,
@@ -368,7 +573,6 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header with illustration
                       Center(
                         child: Column(
                           children: [
@@ -405,7 +609,6 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
                       ),
                       SizedBox(height: 30),
                       
-                      // User Status Selection with better styling
                       _buildSectionTitle('Are you currently pregnant?'),
                       SizedBox(height: 10),
                       Container(
@@ -439,7 +642,6 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
                       ),
                       SizedBox(height: 24),
                       
-                      // Pregnant-specific fields
                       if (_isPregnant) ...[
                         _buildSectionTitle('Due Date'),
                         SizedBox(height: 10),
@@ -463,7 +665,6 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
                           ),
                       ],
                       
-                      // Baby-specific fields
                       if (!_isPregnant) ...[
                         _buildSectionTitle('Baby\'s Birth Date'),
                         SizedBox(height: 10),
@@ -506,7 +707,6 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
                         ),
                         SizedBox(height: 20),
                         
-                        // Baby measurements with row layout
                         Row(
                           children: [
                             Expanded(
@@ -546,7 +746,6 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
                       
                       SizedBox(height: 24),
                       
-                      // Common fields
                       _buildSectionTitle('Health Conditions'),
                       SizedBox(height: 4),
                       Text(
@@ -602,13 +801,175 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
                         maxLines: 2,
                         icon: Icons.medication_rounded,
                       ),
+                      SizedBox(height: 20),
+                      
+                      _buildSectionTitle('Parent Concerns'),
+                      SizedBox(height: 4),
+                      Text(
+                        'Separate multiple concerns with commas',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      _buildTextField(
+                        controller: _parentConcernsController,
+                        hintText: 'e.g., Sleep issues, Feeding concerns',
+                        maxLines: 2,
+                        icon: Icons.psychology_rounded,
+                      ),
+                      SizedBox(height: 20),
+                      
+                      if (!_isPregnant) ...[
+                        _buildSectionTitle('Baby\'s Environment'),
+                        SizedBox(height: 4),
+                        Text(
+                          'Describe key aspects of baby\'s environment (format: aspect: detail)',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                        SizedBox(height: 10),
+                        _buildTextField(
+                          controller: _babyEnvironmentController,
+                          hintText: 'e.g., Daycare: 3 days/week, Siblings: 1 older',
+                          maxLines: 3,
+                          icon: Icons.house_rounded,
+                        ),
+                        SizedBox(height: 20),
+                      ],
+                      
+                      _buildSectionTitle('Lifestyle Information'),
+                      SizedBox(height: 4),
+                      Text(
+                        'Describe key aspects of your lifestyle (format: aspect: detail)',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      _buildTextField(
+                        controller: _lifestyleController,
+                        hintText: 'e.g., Exercise: 2x weekly, Diet: vegetarian',
+                        maxLines: 3,
+                        icon: Icons.self_improvement_rounded,
+                      ),
+                      SizedBox(height: 20),
+                      
+                      _buildSectionTitle('Mental Health & Wellbeing'),
+                      SizedBox(height: 20),
+                      
+                      Text(
+                        'Mental Health Score (1-10)',
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Slider(
+                        value: _mentalHealthScore.toDouble(),
+                        min: 1,
+                        max: 10,
+                        divisions: 9,
+                        label: _mentalHealthScore.toString(),
+                        activeColor: Color(0xFFF8AFAF),
+                        onChanged: (value) {
+                          setState(() {
+                            _mentalHealthScore = value.round();
+                          });
+                        },
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Struggling', style: GoogleFonts.poppins(fontSize: 12)),
+                          Text('Excellent', style: GoogleFonts.poppins(fontSize: 12)),
+                        ],
+                      ),
+                      SizedBox(height: 20),
+                      
+                      Text(
+                        'Energy Level (1-10)',
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Slider(
+                        value: _energyLevel.toDouble(),
+                        min: 1,
+                        max: 10,
+                        divisions: 9,
+                        label: _energyLevel.toString(),
+                        activeColor: Color(0xFFF8AFAF),
+                        onChanged: (value) {
+                          setState(() {
+                            _energyLevel = value.round();
+                          });
+                        },
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Very Low', style: GoogleFonts.poppins(fontSize: 12)),
+                          Text('Very High', style: GoogleFonts.poppins(fontSize: 12)),
+                        ],
+                      ),
+                      SizedBox(height: 20),
+                      
+                      Text(
+                        'Current Mood',
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: _moodOptions.map((mood) {
+                          final isSelected = _mood == mood;
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _mood = mood;
+                              });
+                            },
+                            child: Container(
+                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected ? Color(0xFFF8AFAF) : Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: isSelected ? Color(0xFFF8AFAF) : Colors.grey[300]!,
+                                ),
+                              ),
+                              child: Text(
+                                mood,
+                                style: GoogleFonts.poppins(
+                                  color: isSelected ? Colors.white : Colors.grey[700],
+                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      
                       SizedBox(height: 40),
                       
-                      // Submit button
                       Center(
                         child: ElevatedButton(
                           onPressed: () {
-                            // Validate form
                             if (_isPregnant && _dueDate == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -666,7 +1027,6 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
     );
   }
 
-  // Helper method to build section titles
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
@@ -678,7 +1038,6 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
     );
   }
 
-  // Helper method to build radio tiles
   Widget _buildRadioTile({required String title, required bool value, required IconData icon}) {
     return InkWell(
       onTap: () {
@@ -722,7 +1081,6 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
     );
   }
 
-  // Helper method to build date selector
   Widget _buildDateSelector({
     DateTime? value,
     required String hintText,
@@ -776,7 +1134,6 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
     );
   }
 
-  // Helper method to build dropdown field
   Widget _buildDropdownField({
     String? value,
     required String hintText,
@@ -839,7 +1196,6 @@ class _HealthSurveyScreenState extends State<HealthSurveyScreen> {
     );
   }
 
-  // Helper method to build text fields
   Widget _buildTextField({
     required TextEditingController controller,
     required String hintText,
