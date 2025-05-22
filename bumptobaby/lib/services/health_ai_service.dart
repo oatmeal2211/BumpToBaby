@@ -62,6 +62,10 @@ class HealthAIService {
     final List<HealthScheduleItem> defaultItems = [];
 
     if (survey.isPregnant && survey.dueDate != null) {
+      // Calculate weeks of pregnancy
+      final weeksUntilDue = survey.dueDate!.difference(now).inDays ~/ 7;
+      final currentWeek = 40 - weeksUntilDue;
+      
       defaultItems.addAll([
         HealthScheduleItem(
           title: 'First Trimester Check-up',
@@ -81,8 +85,53 @@ class HealthAIService {
           scheduledDate: now.add(Duration(days: 60)),
           category: 'checkup',
         ),
+        // Add default risk alert
+        HealthScheduleItem(
+          title: 'Monitor for Pregnancy Symptoms',
+          description: 'Watch for severe nausea, spotting, or abdominal pain. Contact your healthcare provider immediately if these occur.',
+          scheduledDate: now,
+          category: 'risk_alert',
+          severity: 'medium',
+          additionalData: {
+            'symptoms': 'Severe nausea, spotting, abdominal pain',
+            'action': 'Contact healthcare provider immediately'
+          },
+        ),
+        // Add default prediction
+        HealthScheduleItem(
+          title: 'Prepare for Morning Sickness',
+          description: 'Morning sickness typically peaks around weeks 8-12. Stock up on crackers, ginger tea, and small snacks to help manage nausea.',
+          scheduledDate: now.add(Duration(days: 14)),
+          category: 'prediction',
+          additionalData: {
+            'essentials': 'Crackers, ginger tea, small snacks',
+            'timing': 'Peaks at weeks 8-12'
+          },
+        ),
       ]);
+      
+      // Add mental health check-in if mental health score is low
+      if (survey.mentalHealthScore != null && survey.mentalHealthScore! < 5) {
+        defaultItems.add(
+          HealthScheduleItem(
+            title: 'Mental Health Check-in',
+            description: 'Schedule an appointment with a mental health professional to discuss your feelings and get support during pregnancy.',
+            scheduledDate: now.add(Duration(days: 7)),
+            category: 'risk_alert',
+            severity: 'medium',
+            additionalData: {
+              'reason': 'Low mental health score reported',
+              'action': 'Schedule appointment with mental health professional'
+            },
+          )
+        );
+      }
+      
     } else if (!survey.isPregnant && survey.babyBirthDate != null) {
+      // Calculate baby's age in months
+      final babyAgeInDays = now.difference(survey.babyBirthDate!).inDays;
+      final babyAgeInMonths = (babyAgeInDays / 30.44).floor(); // Average days in a month
+      
       defaultItems.addAll([
         HealthScheduleItem(
           title: 'First Pediatric Check-up',
@@ -102,7 +151,52 @@ class HealthAIService {
           scheduledDate: now,
           category: 'supplement',
         ),
+        // Add default risk alert
+        HealthScheduleItem(
+          title: 'Monitor for Fever After Vaccination',
+          description: 'Watch for fever or unusual irritability after vaccination. Contact your pediatrician if temperature exceeds 101°F (38.3°C).',
+          scheduledDate: now.add(Duration(days: 60)),
+          category: 'risk_alert',
+          severity: 'medium',
+          additionalData: {
+            'symptoms': 'Fever, unusual irritability',
+            'action': 'Contact pediatrician if temperature exceeds 101°F (38.3°C)'
+          },
+        ),
+        // Add default prediction based on baby's age
+        HealthScheduleItem(
+          title: babyAgeInMonths < 6 ? 'Prepare for Solid Foods' : 'Prepare for Mobility',
+          description: babyAgeInMonths < 6 
+              ? 'Your baby will likely be ready to start solid foods around 6 months. Stock up on baby spoons, bibs, and first foods.'
+              : 'Your baby will become more mobile soon. Ensure your home is baby-proofed with outlet covers and cabinet locks.',
+          scheduledDate: now.add(Duration(days: 30)),
+          category: 'prediction',
+          additionalData: {
+            'essentials': babyAgeInMonths < 6 ? 'Baby spoons, bibs, first foods' : 'Outlet covers, cabinet locks, baby gates',
+            'timing': babyAgeInMonths < 6 ? 'Around 6 months' : 'Coming weeks'
+          },
+        ),
       ]);
+      
+      // Add weight monitoring if weight is provided and concerning
+      if (survey.babyWeight != null) {
+        double expectedWeight = 3.5 + (babyAgeInMonths * 0.5); // Very rough estimate
+        if (survey.babyWeight! < expectedWeight * 0.8) {
+          defaultItems.add(
+            HealthScheduleItem(
+              title: 'Weight Monitoring',
+              description: 'Baby\'s weight appears to be lower than expected. Schedule a check-up with your pediatrician to discuss growth and feeding.',
+              scheduledDate: now.add(Duration(days: 7)),
+              category: 'risk_alert',
+              severity: 'medium',
+              additionalData: {
+                'reason': 'Weight below expected range',
+                'action': 'Schedule pediatrician appointment'
+              },
+            )
+          );
+        }
+      }
     }
 
     return HealthSchedule(
@@ -118,121 +212,230 @@ class HealthAIService {
 You are a healthcare assistant specializing in pregnancy and infant care.
 Current Date: ${now.toIso8601String()}
 User Status: ${survey.isPregnant ? 'Pregnant' : 'New Parent'}
+
+IMPORTANT: Generate a HIGHLY PERSONALIZED health schedule that directly addresses the user's specific concerns, lifestyle, and health status. Include risk alerts and predictions based on the information provided.
 """;
 
+    if (survey.isPregnant) {
+      prompt += """
+Pregnancy Information:
+Due Date: ${survey.dueDate?.toIso8601String() ?? 'Unknown'}
+""";
+      
+      // Add mental health information for pregnant mothers
+      if (survey.mentalHealthScore != null) {
+        prompt += "Mental Health Score: ${survey.mentalHealthScore}/10\n";
+        
+        // Add specific guidance for concerning mental health scores
+        if (survey.mentalHealthScore! < 5) {
+          prompt += "CRITICAL: User has reported low mental health score. Include risk alerts and mental health support recommendations.\n";
+        }
+      }
+      if (survey.energyLevel != null) {
+        prompt += "Energy Level: ${survey.energyLevel}/10\n";
+        
+        // Add specific guidance for low energy levels
+        if (survey.energyLevel! < 5) {
+          prompt += "CRITICAL: User has reported low energy levels. Include specific recommendations for energy management and rest.\n";
+        }
+      }
+      if (survey.mood != null) {
+        prompt += "Current Mood: ${survey.mood}\n";
+        
+        // Add specific guidance for concerning moods
+        if (survey.mood == 'Anxious' || survey.mood == 'Stressed' || survey.mood == 'Sad') {
+          prompt += "CRITICAL: User has reported ${survey.mood} mood. Include specific mental health support recommendations and risk alerts.\n";
+        }
+      }
+      if (survey.lastMentalHealthCheckIn != null) {
+        prompt += "Last Mental Health Check-in: ${survey.lastMentalHealthCheckIn!.toIso8601String()}\n";
+      }
+    } else if (survey.babyBirthDate != null) {
+      // Calculate baby's age in months
+      final babyAgeInDays = now.difference(survey.babyBirthDate!).inDays;
+      final babyAgeInMonths = (babyAgeInDays / 30.44).floor(); // Average days in a month
+      
+      prompt += """
+Baby Information:
+Birth Date: ${survey.babyBirthDate!.toIso8601String()}
+Age: ${babyAgeInMonths} month${babyAgeInMonths != 1 ? 's' : ''}
+Gender: ${survey.babyGender ?? 'Unknown'}
+""";
+
+      if (survey.babyWeight != null) {
+        prompt += "Weight: ${survey.babyWeight} kg\n";
+        
+        // Check for weight concerns based on age
+        if (babyAgeInMonths <= 12) {
+          // Very rough estimate - this should be replaced with proper growth chart data
+          double expectedWeight = 3.5 + (babyAgeInMonths * 0.5);
+          if (survey.babyWeight! < expectedWeight * 0.8) {
+            prompt += "CRITICAL: Baby's weight appears to be lower than expected for age. Include risk alerts for weight monitoring.\n";
+          }
+        }
+      }
+      if (survey.babyHeight != null) {
+        prompt += "Height: ${survey.babyHeight} cm\n";
+      }
+      
+      // Add baby environment information
+      if (survey.babyEnvironment != null && survey.babyEnvironment!.isNotEmpty) {
+        prompt += "Baby's Environment:\n";
+        survey.babyEnvironment!.forEach((key, value) {
+          prompt += "- $key: $value\n";
+        });
+        prompt += "IMPORTANT: Customize recommendations based on the baby's environment details above.\n";
+      }
+    }
+
+    if (survey.healthConditions != null && survey.healthConditions!.isNotEmpty) {
+      prompt += "Health Conditions: ${survey.healthConditions!.join(', ')}\n";
+      prompt += "CRITICAL: User has reported health conditions. Include specific risk alerts and monitoring recommendations for these conditions.\n";
+    }
+    if (survey.allergies != null && survey.allergies!.isNotEmpty) {
+      prompt += "Allergies: ${survey.allergies!.join(', ')}\n";
+      prompt += "IMPORTANT: Include specific precautions and monitoring for reported allergies.\n";
+    }
+    if (survey.medications != null && survey.medications!.isNotEmpty) {
+      prompt += "Medications: ${survey.medications!.join(', ')}\n";
+      prompt += "IMPORTANT: Consider medication schedule and potential interactions in recommendations.\n";
+    }
     if (survey.age != null) {
-      prompt += "User Age: ${survey.age}\n";
+      prompt += "Parent Age: ${survey.age}\n";
+      if (survey.isPregnant && (survey.age! < 18 || survey.age! > 35)) {
+        prompt += "CRITICAL: Parent age may indicate higher risk pregnancy. Include appropriate risk alerts and monitoring.\n";
+      }
     }
     if (survey.location != null) {
-      prompt += "User Location: ${survey.location}\n";
+      prompt += "Location: ${survey.location}\n";
+      prompt += "IMPORTANT: Tailor recommendations to healthcare resources available in ${survey.location}.\n";
     }
-    if (survey.prefersNaturalRemedies == true) {
-      prompt += "User prefers natural/home remedies.\n";
+    if (survey.prefersNaturalRemedies != null) {
+      prompt += "Prefers Natural Remedies: ${survey.prefersNaturalRemedies! ? 'Yes' : 'No'}\n";
+      if (survey.prefersNaturalRemedies!) {
+        prompt += "IMPORTANT: Include natural remedy options alongside conventional treatments where appropriate.\n";
+      }
     }
-    if (survey.isBreastfeeding == true) {
-      prompt += "User is breastfeeding.\n";
+    if (survey.isBreastfeeding != null) {
+      prompt += "Breastfeeding: ${survey.isBreastfeeding! ? 'Yes' : 'No'}\n";
+      if (survey.isBreastfeeding!) {
+        prompt += "IMPORTANT: Include breastfeeding support and monitoring recommendations.\n";
+      }
     }
     if (survey.dietaryPreference != null) {
       prompt += "Dietary Preference: ${survey.dietaryPreference}\n";
+      prompt += "IMPORTANT: Ensure nutritional recommendations align with dietary preferences.\n";
+    }
+    
+    // Add new fields
+    if (survey.parentConcerns != null && survey.parentConcerns!.isNotEmpty) {
+      prompt += "Parent Concerns: ${survey.parentConcerns!.join(', ')}\n";
+      prompt += "CRITICAL: Directly address each of the parent's concerns with specific recommendations, monitoring, and support.\n";
+    }
+    if (survey.lifestyle != null && survey.lifestyle!.isNotEmpty) {
+      prompt += "Lifestyle Information:\n";
+      survey.lifestyle!.forEach((key, value) {
+        prompt += "- $key: $value\n";
+      });
+      prompt += "IMPORTANT: Tailor all recommendations to fit the user's lifestyle details above.\n";
     }
 
-    if (survey.isPregnant && survey.dueDate != null) {
-      final pregnancyDuration = survey.dueDate!.difference(now).inDays;
-      final pregnancyWeeks = 40 - (pregnancyDuration / 7).floor();
-      prompt += "Due Date: ${survey.dueDate!.toIso8601String()}\n";
-      prompt += "Current Pregnancy Week: $pregnancyWeeks\n";
-      if (pregnancyWeeks >= 28) {
-        prompt += "User is in third trimester, focus on late-pregnancy care and delivery prep.\n";
-      }
+    // Enhanced prompt for generating health schedule
+    if (survey.isPregnant) {
       prompt += """
-Generate a detailed pregnancy health schedule with sections:
-1️⃣ Check-ups
-2️⃣ Vaccines
-3️⃣ Milestones
-4️⃣ Supplements
+Generate a complete pregnancy health schedule with the following sections:
 
-Your final response must be in this JSON format:
+1️⃣ Checkups:
+- Regular prenatal visits
+- Tests and screenings
+- Specialist consultations if needed
+- PERSONALIZE based on health conditions and concerns
 
-{
-  "items": [
-    {
-      "title": "32-Week Checkup",
-      "description": "Monitor fetal growth, position, and mother's health.",
-      "scheduledDate": "2025-06-01",
-      "category": "checkup"
-    },
-    ...
-  ]
-}
+2️⃣ Milestones:
+- Key pregnancy milestones by trimester
+- Baby development stages
+- Preparation activities for birth
+- PERSONALIZE based on parent concerns and lifestyle
 
-- The key must be 'items' (not 'vaccine', 'checkups' etc.)
-- 'category' must be one of: checkup, vaccine, supplement, milestone
-- Dates in YYYY-MM-DD format
-- Output ONLY pure JSON
+3️⃣ Supplements:
+- Prenatal vitamins
+- Any additional supplements based on health conditions
+- PERSONALIZE based on dietary preferences and health needs
+
+4️⃣ Mental Health:
+- Regular mental health check-ins
+- Mood and energy level monitoring
+- Self-care suggestions based on current mental state
+- PERSONALIZE based on reported mental health score, energy level, and mood
+
+5️⃣ Risk Alerts:
+- Personalized risk alerts based on health conditions, age, mental health, or concerns
+- Warning signs to watch for
+- MUST INCLUDE at least 2-3 specific risk alerts based on the user's data
+- For each risk alert, include clear actions to take
+
+6️⃣ Predictions:
+- Upcoming needs and preparations
+- Suggested purchases and timing
+- Reminders for important appointments
+- MUST INCLUDE at least 2-3 specific predictions based on the user's stage of pregnancy
+
+⛔️ Response Format Requirements:
+- JSON must have a top-level key 'items'
+- Each item must include: title, description, scheduledDate (YYYY-MM-DD), category
+- Category must be: checkup, milestone, supplement, risk_alert, or prediction
+- For risk_alert items, include a 'severity' field with value 'low', 'medium', or 'high'
+- Include relevant additionalData as needed
+- Return ONLY valid pure JSON (no markdown, no ```json)
 """;
-    }
-
-    if (!survey.isPregnant && survey.babyBirthDate != null) {
-      final babyAge = now.difference(survey.babyBirthDate!).inDays;
-      final monthsOld = babyAge ~/ 30;
-      prompt += "Baby Birth Date: ${survey.babyBirthDate!.toIso8601String()}\n";
-      prompt += "Baby Age (months): $monthsOld\n";
+    } else {
       prompt += """
-Generate a complete infant health schedule based on Malaysia's National Immunisation Programme (NIP), and include the following four sections:
+Generate a complete infant health schedule based on Malaysia's National Immunisation Programme (NIP), and include the following sections:
 
 1️⃣ Vaccines (based on Malaysian NIP):
 - Follow the Malaysian schedule (BCG, Hep B, DTaP-IPV-Hib, Pneumococcal, MMR, etc.)
 - Include missed vaccines if any (mark as 'Due ASAP')
+- PERSONALIZE based on parent concerns, allergies, or baby's environment
 
 2️⃣ Check-ups:
 - Pediatric visits
 - Growth and development assessments
 - Vision and hearing screening
+- PERSONALIZE based on specific health concerns and baby's development
 
 3️⃣ Milestones:
 - Tummy time, rolling over, crawling, first words, walking, social play
 - Feeding milestones (breastfeeding, introducing solids, self-feeding)
 - Mark expected month and brief description
+- PERSONALIZE based on baby's current development and parent concerns
 
 4️⃣ Supplements:
 - Vitamin D drops
 - Iron (if needed)
 - Any others relevant for Malaysian infants
+- PERSONALIZE based on baby's diet and health needs
+
+5️⃣ Risk Alerts:
+- Generate personalized risk alerts based on baby's weight, height, and development
+- Include severity level (low, medium, high)
+- Suggest appropriate actions (e.g., pediatric visit)
+- MUST INCLUDE at least 2-3 specific risk alerts based on the baby's data
+- For each risk alert, include clear actions to take
+
+6️⃣ Predictions:
+- Predict upcoming needs based on baby's age
+- Suggest essential purchases with timing
+- Reminder for important developmental stages
+- MUST INCLUDE at least 2-3 specific predictions based on the baby's age and development
 
 ⛔️ Response Format Requirements:
 - JSON must have a top-level key 'items'
 - Each item must include: title, description, scheduledDate (YYYY-MM-DD), category
-- Category must be: vaccine, checkup, milestone, or supplement
+- Category must be: vaccine, checkup, milestone, supplement, risk_alert, or prediction
+- For risk_alert items, include a 'severity' field with value 'low', 'medium', or 'high'
+- Include relevant additionalData as needed
 - Return ONLY valid pure JSON (no markdown, no ```json)
-
-Here's an example of the required format:
-{
-  "items": [
-    {
-      "title": "6-Month Checkup",
-      "description": "Assess baby's weight, reflexes, and vaccination status.",
-      "scheduledDate": "2025-08-11",
-      "category": "checkup"
-    },
-    {
-      "title": "Vitamin D Drops",
-      "description": "Give baby daily vitamin D drops for bone health.",
-      "scheduledDate": "2025-03-01",
-      "category": "supplement"
-    }
-  ]
-}
 """;
-    }
-
-    if (survey.healthConditions != null && survey.healthConditions!.isNotEmpty) {
-      prompt += "Health Conditions: ${survey.healthConditions!.join(', ')}\n";
-    }
-    if (survey.allergies != null && survey.allergies!.isNotEmpty) {
-      prompt += "Allergies: ${survey.allergies!.join(', ')}\n";
-    }
-    if (survey.medications != null && survey.medications!.isNotEmpty) {
-      prompt += "Medications: ${survey.medications!.join(', ')}\n";
     }
 
     return prompt;
@@ -254,10 +457,10 @@ Here's an example of the required format:
         {"parts": [{"text": prompt}]}
       ],
       "generationConfig": {
-        "temperature": 0.3,
+        "temperature": 0.7,
         "maxOutputTokens": 3000,
-        "topP": 0.8,
-        "topK": 20
+        "topP": 0.9,
+        "topK": 40
       }
     });
 
@@ -335,11 +538,27 @@ HealthSchedule _parseScheduleInIsolate(Map<String, dynamic> payload) {
   final scheduleItems = items.map((item) {
     final date = DateTime.tryParse(item['scheduledDate'].toString());
     if (date == null) return null;
+    
+    // Extract severity for risk alerts
+    String? severity;
+    if (item['category'] == 'risk_alert' && item.containsKey('severity')) {
+      severity = item['severity'];
+    }
+    
+    // Extract additional data if available
+    Map<String, dynamic>? additionalData;
+    if (item.containsKey('additionalData')) {
+      additionalData = Map<String, dynamic>.from(item['additionalData']);
+    }
+    
     return HealthScheduleItem(
       title: item['title'] ?? '',
       description: item['description'] ?? '',
       scheduledDate: date,
       category: item['category'] ?? 'milestone',
+      isCompleted: item['isCompleted'] ?? false,
+      severity: severity,
+      additionalData: additionalData,
     );
   }).whereType<HealthScheduleItem>().toList();
 

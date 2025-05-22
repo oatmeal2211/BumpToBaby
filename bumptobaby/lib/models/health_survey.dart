@@ -15,6 +15,13 @@ class HealthSurvey {
   final bool? prefersNaturalRemedies;
   final bool? isBreastfeeding;
   final String? dietaryPreference;
+  final List<String>? parentConcerns;
+  final Map<String, dynamic>? lifestyle;
+  final Map<String, dynamic>? babyEnvironment;
+  final int? mentalHealthScore;
+  final int? energyLevel;
+  final String? mood;
+  final DateTime? lastMentalHealthCheckIn;
 
   HealthSurvey({
     required this.userId,
@@ -33,6 +40,13 @@ class HealthSurvey {
     this.prefersNaturalRemedies,
     this.isBreastfeeding,
     this.dietaryPreference,
+    this.parentConcerns,
+    this.lifestyle,
+    this.babyEnvironment,
+    this.mentalHealthScore,
+    this.energyLevel,
+    this.mood,
+    this.lastMentalHealthCheckIn,
   });
 
   // Convert to JSON
@@ -54,6 +68,13 @@ class HealthSurvey {
       'prefersNaturalRemedies': prefersNaturalRemedies,
       'isBreastfeeding': isBreastfeeding,
       'dietaryPreference': dietaryPreference,
+      'parentConcerns': parentConcerns,
+      'lifestyle': lifestyle,
+      'babyEnvironment': babyEnvironment,
+      'mentalHealthScore': mentalHealthScore,
+      'energyLevel': energyLevel,
+      'mood': mood,
+      'lastMentalHealthCheckIn': lastMentalHealthCheckIn?.toIso8601String(),
     };
   }
 
@@ -82,6 +103,17 @@ class HealthSurvey {
       prefersNaturalRemedies: json['prefersNaturalRemedies'],
       isBreastfeeding: json['isBreastfeeding'],
       dietaryPreference: json['dietaryPreference'],
+      parentConcerns: json['parentConcerns'] != null
+          ? List<String>.from(json['parentConcerns'])
+          : null,
+      lifestyle: json['lifestyle'],
+      babyEnvironment: json['babyEnvironment'],
+      mentalHealthScore: json['mentalHealthScore'],
+      energyLevel: json['energyLevel'],
+      mood: json['mood'],
+      lastMentalHealthCheckIn: json['lastMentalHealthCheckIn'] != null 
+          ? DateTime.parse(json['lastMentalHealthCheckIn']) 
+          : null,
     );
   }
 } 
