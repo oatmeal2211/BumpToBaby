@@ -36,11 +36,12 @@ enum WeightUnit { kg, lb }
 
 // Data class for Diary Entry
 class DiaryEntry {
+  final String id; // Add unique ID
   final DateTime date;
   final String? imagePath;
-  final String title;       // New field
-  final String description; // New field
-  final String entryType;   // Added field: "fetal" or "baby"
+  final String title;
+  final String description;
+  final String entryType;
 
   // Pregnancy-specific fields (nullable)
   final String? cravings;
@@ -56,23 +57,22 @@ class DiaryEntry {
   final WeightUnit? weightUnit;
 
   DiaryEntry({
+    String? id, // Make ID optional in constructor
     required this.date,
     this.imagePath,
     required this.title,
     required this.description,
-    required this.entryType, // Added parameter with required constraint
-    // Pregnancy fields
+    required this.entryType,
     this.cravings,
     this.mood,
     this.fetalSize,
     this.fetalSizeUnit,
     this.pregnancyStage,
-    // Baby fields
     this.height,
     this.heightUnit,
     this.weight,
     this.weightUnit,
-  });
+  }) : this.id = id ?? '${date.millisecondsSinceEpoch}_${DateTime.now().microsecondsSinceEpoch}'; // Generate unique ID if not provided
 
   // Helper method to get fetal size with unit as string
   String? get fetalSizeDisplay {
@@ -98,18 +98,17 @@ class DiaryEntry {
   // Convert DiaryEntry to JSON for storage
   Map<String, dynamic> toJson() {
     return {
+      'id': id, // Include ID in JSON
       'date': date.millisecondsSinceEpoch,
       'imagePath': imagePath,
       'title': title,
       'description': description,
-      'entryType': entryType, // Added entry type to JSON
-      // Pregnancy fields
+      'entryType': entryType,
       'cravings': cravings,
       'mood': mood,
       'fetalSize': fetalSize,
       'fetalSizeUnit': fetalSizeUnit?.index,
       'pregnancyStage': pregnancyStage,
-      // Baby fields
       'height': height,
       'heightUnit': heightUnit?.index,
       'weight': weight,
@@ -120,24 +119,34 @@ class DiaryEntry {
   // Create DiaryEntry from JSON data
   factory DiaryEntry.fromJson(Map<String, dynamic> json) {
     return DiaryEntry(
+      id: json['id'] as String?, // Read ID from JSON
       date: DateTime.fromMillisecondsSinceEpoch(json['date'] as int),
       imagePath: json['imagePath'] as String?,
-      title: (json['title'] as String?) ?? '', // Ensure title is non-null
-      description: (json['description'] as String?) ?? '', // Ensure description is non-null
-      entryType: (json['entryType'] as String?) ?? 'fetal', // Default to fetal for backward compatibility
-      // Pregnancy fields
+      title: (json['title'] as String?) ?? '',
+      description: (json['description'] as String?) ?? '',
+      entryType: (json['entryType'] as String?) ?? 'fetal',
       cravings: json['cravings'] as String?,
       mood: json['mood'] as String?,
       fetalSize: json['fetalSize'] as double?,
       fetalSizeUnit: json['fetalSizeUnit'] != null ? FetalSizeUnit.values[json['fetalSizeUnit'] as int] : null,
       pregnancyStage: json['pregnancyStage'] as String?,
-      // Baby fields
       height: json['height'] as double?,
       heightUnit: json['heightUnit'] != null ? LengthUnit.values[json['heightUnit'] as int] : null,
       weight: json['weight'] as double?,
       weightUnit: json['weightUnit'] != null ? WeightUnit.values[json['weightUnit'] as int] : null,
     );
   }
+
+  // Add equals operator for comparison
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DiaryEntry &&
+          runtimeType == other.runtimeType &&
+          id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class GrowthDevelopmentScreen extends StatefulWidget {
@@ -1656,6 +1665,9 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
             ((_selectedMode == GrowthScreenMode.pregnancy && entry.entryType == 'fetal') ||
              (_selectedMode == GrowthScreenMode.baby && entry.entryType == 'baby')))
         .toList();
+  
+    // Sort entries by creation time (newest first)
+    entriesForSelectedDate.sort((a, b) => b.id.compareTo(a.id));
 
     return Column(
       children: [
@@ -2162,14 +2174,14 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                         imagePath: selectedImagePath,
                         title: titleController.text,
                         description: descriptionController.text,
-                        entryType: "fetal", // Explicitly mark as fetal
+                        entryType: "fetal",
                         mood: moodController.text.isNotEmpty ? moodController.text : "Not specified",
                         cravings: cravingsController.text.isNotEmpty ? cravingsController.text : "None",
-                        fetalSize: fetalSize > 0 ? fetalSize : null, // Only set non-zero values
+                        fetalSize: fetalSize > 0 ? fetalSize : null,
                         fetalSizeUnit: selectedFetalSizeUnit,
                         pregnancyStage: selectedPregnancyStage,
                       );
-                    } else { // Baby Mode
+                    } else {
                       double height = 0.0;
                       if (heightController.text.isNotEmpty) {
                         try { height = double.parse(heightController.text); } catch (e) { /* Handle error or default */ }
@@ -2183,10 +2195,10 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                         imagePath: selectedImagePath,
                         title: titleController.text,
                         description: descriptionController.text,
-                        entryType: "baby", // Explicitly mark as baby
-                        height: height > 0 ? height : null, // Only set non-zero values
+                        entryType: "baby",
+                        height: height > 0 ? height : null,
                         heightUnit: selectedHeightUnit,
-                        weight: weight > 0 ? weight : null, // Only set non-zero values
+                        weight: weight > 0 ? weight : null,
                         weightUnit: selectedWeightUnit,
                       );
                     }
@@ -2203,54 +2215,35 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                         ))
                       );
 
-                      // Save to Firebase using our service
                       if (_currentBabyProfileId != null) {
-                        // Log the key information before saving
                         developer.log(
-                          'Saving ${entryType} entry for date ${entryDate}, profile $_currentBabyProfileId',
+                          'Saving ${newEntry.entryType} entry for date ${entryDate}, profile $_currentBabyProfileId',
                           name: 'GrowthDevelopmentScreen'
                         );
                         
                         await _diaryService.saveDiaryEntry(_currentBabyProfileId!, newEntry);
-                        
-                        // Add points to the profile in Firebase
                         await _babyProfileService.addPointsToProfile(_currentBabyProfileId!, 10);
                         
-                        // Update local state only after successful Firebase save
+                        // Refresh all diary entries to ensure we have the latest data
+                        final updatedEntries = await _diaryService.getDiaryEntries(_currentBabyProfileId!);
+                        
                         setState(() {
-                          // Remove any existing entries for the same day and type (if any)
-                          _allDiaryEntries.removeWhere((entry) => 
-                            entry.date.year == newEntry.date.year && 
-                            entry.date.month == newEntry.date.month &&
-                            entry.date.day == newEntry.date.day &&
-                            entry.entryType == newEntry.entryType
-                          );
-                          
-                          // Add the new entry to local state
-                          _allDiaryEntries.add(newEntry);
-                          
-                          // Update user score for gamification (local UI only)
+                          _allDiaryEntries.clear(); // Clear existing entries
+                          _allDiaryEntries.addAll(updatedEntries); // Add all updated entries
                           _userScore += 10;
                         });
                         
-                        // Save user score to SharedPreferences
                         _saveData();
-                        
-                        // Fetch new AI insights with the updated data
                         _fetchAndSetAiInsights();
                         
-                        // Log success
-                        developer.log("Successfully saved diary entry to Firebase and updated points", name: "GrowthDevelopmentScreen");
+                        developer.log("Successfully saved diary entry and refreshed entries list", name: "GrowthDevelopmentScreen");
+                        
+                        _showPointsGainedDialog();
                       } else {
                         throw Exception("No baby profile selected");
                       }
-                      
-                      _showPointsGainedDialog();
                     } catch (e) {
-                      // Log the error
                       developer.log("Error saving diary entry: $e", name: "GrowthDevelopmentScreen", error: e);
-                      
-                      // Show error message
                       scaffoldMessenger.showSnackBar(
                         SnackBar(content: Text("Error saving entry: ${e.toString()}"))
                       );
@@ -2427,7 +2420,6 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
   }
 
   void _confirmDeleteEntry(BuildContext context, DiaryEntry entry) {
-    // Implement the confirmation dialog
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -2444,13 +2436,9 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
             TextButton(
               child: Text("Delete", style: GoogleFonts.poppins()),
               onPressed: () async {
-                // Get a reference to the outer scaffold messenger before closing the dialog
                 final scaffoldMessenger = ScaffoldMessenger.of(context);
-                
-                // Close the dialog
                 Navigator.of(dialogContext).pop();
                 
-                // Show loading indicator using the saved scaffold messenger
                 scaffoldMessenger.showSnackBar(
                   SnackBar(content: Row(
                     children: [
@@ -2462,39 +2450,28 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                 );
                 
                 try {
-                  // First delete from Firebase
                   if (_currentBabyProfileId != null) {
                     await _diaryService.deleteDiaryEntry(_currentBabyProfileId!, entry);
                     
-                    // Then update local state
                     setState(() {
-                      _allDiaryEntries.removeWhere((e) => 
-                        e.date.year == entry.date.year && 
-                        e.date.month == entry.date.month && 
-                        e.date.day == entry.date.day &&
-                        e.entryType == entry.entryType // Only remove entries of the same type
-                      );
+                      // Use ID for exact entry removal
+                      _allDiaryEntries.removeWhere((e) => e.id == entry.id);
                     });
                     
-                    // Refresh AI insights
                     _fetchAndSetAiInsights();
                     
-                    // Show success message
                     scaffoldMessenger.clearSnackBars();
                     scaffoldMessenger.showSnackBar(
                       SnackBar(content: Text("Entry deleted successfully"))
                     );
                     
-                    // Log success
                     developer.log("Successfully deleted diary entry from Firebase and updated local state", name: "GrowthDevelopmentScreen");
                   } else {
                     throw Exception("No baby profile selected");
                   }
                 } catch (e) {
-                  // Log the error
                   developer.log("Error deleting diary entry: $e", name: "GrowthDevelopmentScreen", error: e);
                   
-                  // Show error message
                   scaffoldMessenger.clearSnackBars();
                   scaffoldMessenger.showSnackBar(
                     SnackBar(content: Text("Error deleting entry: ${e.toString()}"))

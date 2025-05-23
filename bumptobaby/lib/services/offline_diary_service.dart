@@ -15,6 +15,9 @@ class OfflineDiaryService {
       // Get existing offline entries for this profile
       final offlineEntries = await getOfflineEntries(profileId);
       
+      // Remove any existing entry with the same ID
+      offlineEntries.removeWhere((e) => e.id == entry.id);
+      
       // Add new entry
       offlineEntries.add(entry);
       
@@ -24,11 +27,12 @@ class OfflineDiaryService {
       
       // Add to pending entries for sync
       final pendingEntries = await getPendingEntries(profileId);
+      pendingEntries.removeWhere((e) => e.id == entry.id); // Remove any existing entry with same ID
       pendingEntries.add(entry);
       final pendingJson = pendingEntries.map((e) => jsonEncode(e.toJson())).toList();
       await prefs.setStringList('${_pendingEntriesKey}_$profileId', pendingJson);
       
-      developer.log('Saved offline entry and added to pending sync', name: 'OfflineDiaryService');
+      developer.log('Saved offline entry and added to pending sync: ${entry.id}', name: 'OfflineDiaryService');
     } catch (e) {
       developer.log('Error saving offline entry: $e', name: 'OfflineDiaryService');
       rethrow;
@@ -95,17 +99,20 @@ class OfflineDiaryService {
       // Get existing entries
       final offlineEntries = await getOfflineEntries(profileId);
       
-      // Remove the entry
-      offlineEntries.removeWhere((e) => 
-        e.date.millisecondsSinceEpoch == entry.date.millisecondsSinceEpoch && 
-        e.entryType == entry.entryType
-      );
+      // Remove the entry by ID
+      offlineEntries.removeWhere((e) => e.id == entry.id);
       
       // Save back to SharedPreferences
       final entriesJson = offlineEntries.map((e) => jsonEncode(e.toJson())).toList();
       await prefs.setStringList('${_offlineEntriesKey}_$profileId', entriesJson);
       
-      developer.log('Deleted offline entry', name: 'OfflineDiaryService');
+      // Also remove from pending entries if it exists
+      final pendingEntries = await getPendingEntries(profileId);
+      pendingEntries.removeWhere((e) => e.id == entry.id);
+      final pendingJson = pendingEntries.map((e) => jsonEncode(e.toJson())).toList();
+      await prefs.setStringList('${_pendingEntriesKey}_$profileId', pendingJson);
+      
+      developer.log('Deleted offline entry: ${entry.id}', name: 'OfflineDiaryService');
     } catch (e) {
       developer.log('Error deleting offline entry: $e', name: 'OfflineDiaryService');
       rethrow;
