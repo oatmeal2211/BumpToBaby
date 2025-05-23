@@ -384,39 +384,45 @@ class _NearestClinicMapScreenState extends State<NearestClinicMapScreen> with Ti
               elevation: 8,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         IconButton(
                           icon: const Icon(Icons.arrow_back),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
                           onPressed: () => Navigator.pop(context),
                         ),
                         Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            decoration: InputDecoration(
-                              hintText: 'Search places...',
-                              border: InputBorder.none,
-                              suffixIcon: IconButton(
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() {
-                                    searchQuery = '';
-                                    _applyFilters();
-                                  });
-                                },
+                          child: Container(
+                            height: 48,
+                            child: TextField(
+                              controller: _searchController,
+                              decoration: InputDecoration(
+                                hintText: 'Search places...',
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                                suffixIcon: IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {
+                                      searchQuery = '';
+                                      _applyFilters();
+                                    });
+                                  },
+                                ),
                               ),
+                              onChanged: (value) {
+                                setState(() {
+                                  searchQuery = value;
+                                  _applyFilters();
+                                });
+                              },
                             ),
-                            onChanged: (value) {
-                              setState(() {
-                                searchQuery = value;
-                                _applyFilters();
-                              });
-                            },
                           ),
                         ),
                         IconButton(
@@ -665,7 +671,9 @@ class _NearestClinicMapScreenState extends State<NearestClinicMapScreen> with Ti
       mapToolbarEnabled: false,
       mapType: _currentMapType,
       onMapCreated: (controller) {
-        _mapController.complete(controller);
+        if (!_mapController.isCompleted) {
+          _mapController.complete(controller);
+        }
       },
     );
   }
