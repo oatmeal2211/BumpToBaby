@@ -17,24 +17,6 @@ BumpToBaby is a mobile app that centralises all you need as a mother to help you
 | **Qwen**   | Medical Misinformation Detection |
 | **PubMed API**   | Medical Data Retrieval |
 
-## Medical Misinformation Prevention
-
-BumpToBaby now includes a sophisticated medical misinformation detection system using Retrieval Augmented Generation (RAG) with Qwen. This system helps protect users from potentially harmful medical misinformation by:
-
-1. **PubMed Data Integration**: The app retrieves reliable medical information from PubMed, a trusted source of medical research.
-
-2. **Intelligent Content Moderation**: Using advanced AI technology from Qwen, the app can detect when posts contain medical information that contradicts established medical consensus.
-
-3. **Informative Warnings**: When misinformation is detected, users see clear warning banners explaining the issue along with references to accurate medical information.
-
-4. **Seamless Integration**: The system works alongside our existing content moderation to provide comprehensive protection against both harmful and medically inaccurate content.
-
-### How It Works
-
-1. When a user creates a post, the content is analyzed for medical claims
-2. The system searches for relevant medical information in our database
-3. If the post contradicts reliable medical information, it's flagged
-4. Users see a warning banner with correct information when viewing flagged posts
 ### 1. User Authentication
 - Secure signup and login functionality
 - Email verification
@@ -106,74 +88,106 @@ Eight main feature buttons providing access to:
    ```
    rules_version = '2';
    service cloud.firestore {
-     match /databases/{database}/documents {
-       // User profile rules
-       match /users/{userId} {
-         // Allow read of any user profile
-         allow read: if request.auth != null;
-         // Only allow users to modify their own profile
-         allow write: if request.auth != null && request.auth.uid == userId;
-       }
-    
-       // Posts rules
-       match /posts/{postId} {
-  		   // Anyone logged in can read posts
-  		   allow read: if request.auth != null;
-
-  		   // Only creator can update/delete their posts (excluding likes)
-  		   allow update, delete: if request.auth != null
-                           && request.auth.uid == resource.data.userId
-                           && !(request.resource.data.keys().hasAny(['likes']) &&
-                                !(request.resource.data.likes == resource.data.likes));
-
-  		   // Allow users to like/unlike by updating only the likes array
-  		   allow update: if request.auth != null &&
-                   request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
-                   request.resource.data.userId == resource.data.userId;
-
-  		   // Anyone logged in can create posts
-  		   allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+   match /databases/{database}/documents {
+    // User profile rules
+    match /users/{userId} {
+      // Allow read of any user profile
+      allow read: if request.auth != null;
+      // Only allow users to modify their own profile
+      allow write: if request.auth != null && request.auth.uid == userId;
       
-         // Allow others to update ONLY the commentsCount field
-  		   allow update: if request.auth != null &&
-                   request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount']);
-
-  		   allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-
-  		   // Comments subcollection (unchanged)
-  		   match /comments/{commentId} {
-    		   allow read: if request.auth != null;
-
-    		   // Allow comment creation only if userId is set and matches the authenticated user
-    		   allow create: if request.auth != null &&
-                     request.resource.data.keys().hasAll(['userId', 'content']) &&
-                     request.resource.data.userId == request.auth.uid;
-
-    		   // Allow only comment creator to update/delete their comment
-    		   allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
-  			   }
-		   }
+      // Allow access to babyProfiles subcollection
+      match /babyProfiles/{profileId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+        
+        // Allow access to diaryEntries subcollection
+        match /diaryEntries/{entryId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+    }
     
-       // Allow users to read and write their own family planning data
-       match /familyPlanning/{userId} {
-         allow read, write: if request.auth != null && request.auth.uid == userId;
-       }
+    // Allow access to medical_info collection
+		match /medical_info/{docId} {
+  		allow read: if request.auth != null;
+  		allow write: if request.auth != null;
+		}
+
+		// Allow access to fact_checks collection
+		match /fact_checks/{docId} {
+  		allow read: if request.auth != null;
+  		allow write: if request.auth != null;
+		}
     
-       // Allow users to read and write their own health surveys
-       match /health_surveys/{userId}/{document=**} {
-         allow read, write: if request.auth != null && request.auth.uid == userId;
-       }
+    // Posts rules
+    match /posts/{postId} {
+      // Anyone logged in can read posts
+      allow read: if request.auth != null;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+
+      // Only creator can update/delete their posts (excluding likes)
+      allow update, delete: if request.auth != null
+                        && request.auth.uid == resource.data.userId
+                        && !(request.resource.data.keys().hasAny(['likes']) &&
+                             !(request.resource.data.likes == resource.data.likes));
+
+      // Allow users to like/unlike by updating only the likes array
+      allow update: if request.auth != null &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
+                request.resource.data.userId == resource.data.userId;
+
+      // Anyone logged in can create posts
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      
+      // Allow others to update ONLY the commentsCount field
+      allow update: if request.auth != null &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount']);
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if request.auth != null;
+
+        // Allow comment creation only if userId is set and matches the authenticated user
+        allow create: if request.auth != null &&
+                  request.resource.data.keys().hasAll(['userId', 'content']) &&
+                  request.resource.data.userId == request.auth.uid;
+
+        // Allow only comment creator to update/delete their comment
+        allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      }
+    }
     
-       // Allow users to read and write their own health schedules
-       match /health_schedules/{userId} {
-         allow read, write: if request.auth != null && request.auth.uid == userId;
-       }
+    // Allow users to read and write their own family planning data
+    match /familyPlanning/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
     
-       // Default deny
-       match /{document=**} {
-         allow read, write: if false;
-       }
-     }
+    // Allow users to read and write their own health surveys
+    match /health_surveys/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow users to read and write their own health schedules
+    match /health_schedules/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+        // ***** ADD THIS BLOCK FOR RECIPES *****
+    match /recipes/{recipeId} {
+      // Allow authenticated users to create new recipes
+      // Ensure the recipe being created has a 'userId' field matching the creator's UID
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      
+      // Allow users to read, update, and delete only their own recipes
+      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+    // ***** END OF RECIPES BLOCK *****
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+   }
    }
    ```
 
