@@ -131,138 +131,172 @@ class _HomeScreenState extends State<HomeScreen> {
   
   // Method to build the main home page content
   Widget _buildHomePage() {
-    return Column(
-      children: [
-        // Top part with greeting and profile
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Hi $_username!',
-                style: GoogleFonts.poppins(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E6091),
-                ),
-              ),
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context, 
-                    MaterialPageRoute(builder: (_) => ProfileScreen())
-                  ).then((_) => _fetchUserData());
-                },
-                child: CircleAvatar(
-                  radius: 24,
-                  backgroundImage: _profileImageUrl.isNotEmpty
-                      ? NetworkImage(_profileImageUrl)
-                      : AssetImage('lib/assets/images/BumpToBaby Logo.png') as ImageProvider,
-                ),
-              ),
-            ],
-          ),
-        ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableHeight = constraints.maxHeight;
+
+        // Greeting section constants
+        final greetingContentHeight = 80.0; 
+        final greetingVerticalMarginValue = 8.0;
+        final greetingHorizontalMarginValue = 16.0;
+        final greetingVerticalMargins = greetingVerticalMarginValue * 2; 
+        final greetingTotalFootprint = greetingContentHeight + greetingVerticalMargins;
+
+        // Grid Container constants
+        final gridContainerBottomPadding = 16.0; 
+        final gridMainAxisSpacing = 12.0;
+        final gridCrossAxisSpacing = 12.0;
+        final gridColumnCount = 2;
+        final gridRowCount = 3;
+
+        // Calculate height for the Grid Container
+        final gridContainerHeight = availableHeight - greetingTotalFootprint;
+
+        // Calculate dimensions for GridView items for childAspectRatio
+        final totalHorizontalPaddingInGridContainer = greetingHorizontalMarginValue * 2; 
+        final totalHorizontalSpacingBetweenItems = gridCrossAxisSpacing * (gridColumnCount - 1);
+        final itemWidth = (constraints.maxWidth - totalHorizontalPaddingInGridContainer - totalHorizontalSpacingBetweenItems) / gridColumnCount;
+
+        final heightAvailableForGridItemsArea = gridContainerHeight - gridContainerBottomPadding;
+        final totalVerticalSpacingBetweenItems = gridMainAxisSpacing * (gridRowCount - 1);
+        final itemHeight = (heightAvailableForGridItemsArea - totalVerticalSpacingBetweenItems) / gridRowCount;
         
-        // Grid of features - expanded to fill more space
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: GridView.count(
-              crossAxisCount: 2,
-              childAspectRatio: 0.8, // Further reduced from 0.9 to accommodate larger content
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              children: [
-                // Vaccination Clinic Nearby
-                FeatureCard(
-                  title: 'Vaccination\nClinic Nearby',
-                  icon: Icons.local_hospital,
-                  color: Color(0xFFAFDCF8),
-                  imagePath: 'lib/assets/images/vaccination.png',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => NearestClinicMapScreen()),
-                    );
-                  },
-                ),
-                
-                // Smart Health Tracker
-                FeatureCard(
-                  title: 'Smart Health\nTracker',
-                  icon: Icons.favorite,
-                  color: Color(0xFFF8AFAF),
-                  imagePath: 'lib/assets/images/smart_health_tracker.png',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => SmartHealthTrackerScreen()),
-                    );
-                  },
-                ),
-                
-                // Growth & Development
-                FeatureCard(
-                  title: 'Growth &\nDevelopment',
-                  icon: Icons.child_care,
-                  color: Color(0xFFAFC9F8),
-                  imagePath: 'lib/assets/images/growth_development.png',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => GrowthDevelopmentScreen()),
-                    );
-                  },
-                ),
-                
-                // Nutrition & Meals
-                FeatureCard(
-                  title: 'Nutrition &\nMeals',
-                  icon: Icons.restaurant,
-                  color: Color(0xFFF8AFAF),
-                  imagePath: 'lib/assets/images/nutrition_meals.png',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => NutritionMealsScreen()),
-                    );
-                  },
-                ),
-                
-                // Audio/Visual Learning
-                FeatureCard(
-                  title: 'Audio/Visual\nLearning',
-                  icon: Icons.videocam,
-                  color: Color(0xFFAFDCF8),
-                  imagePath: 'lib/assets/images/audio_visual.png',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => AudioVisualLearningScreen()),
-                    );
-                  },
-                ),
-                
-                // Family Planning
-                FeatureCard(
-                  title: 'Family\nPlanning',
-                  icon: Icons.family_restroom,
-                  color: Color(0xFFF8AFAF),
-                  imagePath: 'lib/assets/images/family_planning.png',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => FamilyPlanningScreen()),
-                    );
-                  },
-                ),
-              ],
+        final calculatedChildAspectRatio = (itemHeight > 0 && itemWidth > 0) ? (itemWidth / itemHeight) : 1.0;
+
+        return Column(
+          children: [
+            // Enhanced greeting section with container
+            Container(
+              height: greetingContentHeight, 
+              margin: EdgeInsets.fromLTRB(
+                greetingHorizontalMarginValue, 
+                greetingVerticalMarginValue, 
+                greetingHorizontalMarginValue, 
+                greetingVerticalMarginValue
+              ), 
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    spreadRadius: 1,
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Welcome back,',
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          height: 1.2,
+                          color: Color(0xFF1E6091).withOpacity(0.8),
+                        ),
+                      ),
+                      Text(
+                        _username,
+                        style: GoogleFonts.poppins(
+                          fontSize: 28,
+                          height: 1.0,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E6091),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Hero(
+                    tag: 'profileAvatar',
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context, 
+                          MaterialPageRoute(builder: (_) => ProfileScreen())
+                        ).then((_) => _fetchUserData());
+                      },
+                      child: CircleAvatar(
+                        radius: 24,
+                        backgroundColor: Color(0xFF1E6091).withOpacity(0.1),
+                        child: CircleAvatar(
+                          radius: 22,
+                          backgroundImage: _profileImageUrl.isNotEmpty
+                              ? NetworkImage(_profileImageUrl)
+                              : AssetImage('lib/assets/images/BumpToBaby Logo.png') as ImageProvider,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ),
-      ],
+            
+            // Grid of features
+            Container(
+              height: gridContainerHeight, 
+              padding: EdgeInsets.fromLTRB(16, 0, 16, gridContainerBottomPadding),
+              child: GridView.count(
+                physics: NeverScrollableScrollPhysics(),
+                crossAxisCount: gridColumnCount,
+                childAspectRatio: calculatedChildAspectRatio, 
+                crossAxisSpacing: gridCrossAxisSpacing,
+                mainAxisSpacing: gridMainAxisSpacing,
+                children: [
+                  FeatureCard(
+                    title: 'Medical Services\nNearby',
+                    icon: Icons.local_hospital,
+                    color: Color(0xFFAFDCF8),
+                    imagePath: 'lib/assets/images/vaccination.png',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NearestClinicMapScreen())),
+                  ),
+                  FeatureCard(
+                    title: 'Smart Health\nTracker',
+                    icon: Icons.favorite,
+                    color: Color(0xFFF8AFAF),
+                    imagePath: 'lib/assets/images/smart_health_tracker.png',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SmartHealthTrackerScreen())),
+                  ),
+                  FeatureCard(
+                    title: 'Growth &\nDevelopment',
+                    icon: Icons.child_care,
+                    color: Color(0xFFAFDCF8),
+                    imagePath: 'lib/assets/images/growth_development.png',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GrowthDevelopmentScreen())),
+                  ),
+                  FeatureCard(
+                    title: 'Nutrition &\nMeals',
+                    icon: Icons.restaurant,
+                    color: Color(0xFFF8AFAF),
+                    imagePath: 'lib/assets/images/nutrition_meals.png',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NutritionMealsScreen())),
+                  ),
+                  FeatureCard(
+                    title: 'Audio/Visual\nLearning',
+                    icon: Icons.videocam,
+                    color: Color(0xFFAFDCF8),
+                    imagePath: 'lib/assets/images/audio_visual.png',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AudioVisualLearningScreen())),
+                  ),
+                  FeatureCard(
+                    title: 'Family\nPlanning',
+                    icon: Icons.family_restroom,
+                    color: Color(0xFFF8AFAF),
+                    imagePath: 'lib/assets/images/family_planning.png',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FamilyPlanningScreen())),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -274,7 +308,6 @@ class _HomeScreenState extends State<HomeScreen> {
         child: _buildCurrentPage(),
       ),
       bottomNavigationBar: Container(
-        height: 60,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.only(
@@ -290,39 +323,22 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            NavBarItem(
-              icon: Icons.home, 
-              label: "Home", 
-              isSelected: _currentIndex == 0,
-              onTap: () => setState(() => _currentIndex = 0),
-            ),
-            NavBarItem(
-              icon: Icons.calendar_today, 
-              label: "My Schedule",
-              isSelected: _currentIndex == 1,
-              onTap: () => setState(() => _currentIndex = 1),
-            ),
-            NavBarItem(
-              icon: Icons.monitor_heart, 
-              label: "Baby Tracker",
-              isSelected: _currentIndex == 2,
-              onTap: () => setState(() => _currentIndex = 2),
-            ),
-            NavBarItem(
-              icon: Icons.medical_services, 
-              label: "Health Help",
-              isSelected: _currentIndex == 3,
-              onTap: () => setState(() => _currentIndex = 3),
-            ),
-            NavBarItem(
-              icon: Icons.people, 
-              label: "Community",
-              isSelected: _currentIndex == 4,
-              onTap: () => setState(() => _currentIndex = 4),
-            ),
+        child: BottomNavigationBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          selectedItemColor: Color(0xFF1E6091),
+          unselectedItemColor: Colors.grey,
+          currentIndex: _currentIndex,
+          type: BottomNavigationBarType.fixed,
+          selectedLabelStyle: GoogleFonts.poppins(fontSize: 12),
+          unselectedLabelStyle: GoogleFonts.poppins(fontSize: 12),
+          onTap: (index) => setState(() => _currentIndex = index),
+          items: [
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+            BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: "My Schedule"),
+            BottomNavigationBarItem(icon: Icon(Icons.monitor_heart), label: "Baby Tracker"),
+            BottomNavigationBarItem(icon: Icon(Icons.medical_services), label: "Health Help"),
+            BottomNavigationBarItem(icon: Icon(Icons.people), label: "Community"),
           ],
         ),
       ),
@@ -369,67 +385,27 @@ class FeatureCard extends StatelessWidget {
             imagePath != null 
                 ? Image.asset(
                     imagePath!,
-                    height: 80,
-                    width: 80,
+                    height: 60,
+                    width: 60,
                     fit: BoxFit.contain,
                   )
                 : Icon(
                     icon,
-                    size: 64,
+                    size: 48,
                     color: Color(0xFF1E6091),
                   ),
-            SizedBox(height: 16),
+            SizedBox(height: 8),
             Text(
               title,
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF1E6091),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class NavBarItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const NavBarItem({
-    Key? key,
-    required this.icon,
-    required this.label,
-    this.isSelected = false,
-    required this.onTap,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isSelected ? Color(0xFF1E6091) : Colors.grey,
-            size: 24,
-          ),
-          Text(
-            label,
-            style: GoogleFonts.poppins(
-              fontSize: 10,
-              color: isSelected ? Color(0xFF1E6091) : Colors.grey,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-        ],
       ),
     );
   }
