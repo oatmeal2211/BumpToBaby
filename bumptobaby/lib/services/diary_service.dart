@@ -76,7 +76,8 @@ class DiaryService {
   Future<void> _saveToFirebase(String babyProfileId, DiaryEntry entry) async {
     try {
       final entryData = entry.toJson();
-      final String entryId = '${entry.date.millisecondsSinceEpoch}_${entry.entryType}';
+      // Use the entry's unique ID instead of generating one
+      final String entryId = entry.id;
       
       // Ensure the user document exists
       await _firestore.collection('users').doc(_userId).set({
@@ -162,8 +163,23 @@ class DiaryService {
       // Get offline entries
       final offlineEntries = await _offlineService.getOfflineEntries(babyProfileId);
       
-      // Merge online and offline entries, removing duplicates
-      final allEntries = {...entries, ...offlineEntries}.toList();
+      // Create a map using entry IDs to handle duplicates
+      final Map<String, DiaryEntry> entryMap = {};
+      
+      // Online entries take precedence
+      for (var entry in entries) {
+        entryMap[entry.id] = entry;
+      }
+      
+      // Only add offline entries that don't exist online
+      for (var entry in offlineEntries) {
+        if (!entryMap.containsKey(entry.id)) {
+          entryMap[entry.id] = entry;
+        }
+      }
+      
+      // Convert back to list and sort
+      final allEntries = entryMap.values.toList();
       allEntries.sort((a, b) => b.date.compareTo(a.date)); // Sort by date descending
       
       // Log distribution of entry types for debugging
@@ -194,10 +210,9 @@ class DiaryService {
       final isOnline = await _isOnline();
       
       if (isOnline) {
-        // If online, delete from Firebase
-        final String entryId = '${entry.date.millisecondsSinceEpoch}_${entry.entryType}';
-        await _getDiaryCollection(babyProfileId).doc(entryId).delete();
-        developer.log('Successfully deleted diary entry from Firebase: $entryId', name: 'DiaryService');
+        // Use the entry's unique ID for deletion
+        await _getDiaryCollection(babyProfileId).doc(entry.id).delete();
+        developer.log('Successfully deleted diary entry from Firebase: ${entry.id}', name: 'DiaryService');
       }
     } catch (e) {
       developer.log('Error deleting diary entry: $e', name: 'DiaryService');
