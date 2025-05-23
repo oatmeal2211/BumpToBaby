@@ -202,42 +202,44 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
   // Handler for pregnancy tab selection
   void _handlePregnancyTabSelection() {
     if (_pregnancyTabController != null && 
-        _pregnancyTabController!.indexIsChanging == false && // Ensure it's a confirmed change
-        _pregnancyTabController!.index == 0 && // 0 is Fetal Growth tab
-        _selectedMode == GrowthScreenMode.pregnancy) { 
-      if (!_isFetchingAiInsights) {
-        _fetchAndSetAiInsights();
+        _pregnancyTabController!.indexIsChanging == false) { // Ensure it's a confirmed change
+        
+      if (_pregnancyTabController!.index == 0 && // 0 is Fetal Growth tab
+          _selectedMode == GrowthScreenMode.pregnancy) { 
+        if (!_isFetchingAiInsights) {
+          _fetchAndSetAiInsights();
+        }
       }
-    }
-    
-    // When switching to Bump Diary tab, refresh entries from Firebase
-    if (_pregnancyTabController != null && 
-        _pregnancyTabController!.indexIsChanging == false && // Ensure it's a confirmed change
-        _pregnancyTabController!.index == 1 && // 1 is Bump Diary tab
-        _selectedMode == GrowthScreenMode.pregnancy) {
-      // Refresh diary entries from Firebase
-      _refreshDiaryEntries();
+      
+      // When switching to Bump Diary tab, only refresh if needed
+      if (_pregnancyTabController!.index == 1 && // 1 is Bump Diary tab
+          _selectedMode == GrowthScreenMode.pregnancy &&
+          _allDiaryEntries.isEmpty) { // Only refresh if no entries
+        // Refresh diary entries from Firebase
+        _refreshDiaryEntries();
+      }
     }
   }
 
   // Handler for baby tracker tab selection
   void _handleBabyTrackerTabSelection() {
     if (_babyTrackerTabController != null &&
-        _babyTrackerTabController!.indexIsChanging == false && // Ensure it's a confirmed change
-        _babyTrackerTabController!.index == 0 && // 0 is Baby Growth tab
-        _selectedMode == GrowthScreenMode.baby) {
-      if (!_isFetchingAiInsights) {
-        _fetchAndSetAiInsights();
+        _babyTrackerTabController!.indexIsChanging == false) { // Ensure it's a confirmed change
+        
+      if (_babyTrackerTabController!.index == 0 && // 0 is Baby Growth tab
+          _selectedMode == GrowthScreenMode.baby) {
+        if (!_isFetchingAiInsights) {
+          _fetchAndSetAiInsights();
+        }
       }
-    }
-    
-    // When switching to Growth Diary tab, refresh entries from Firebase
-    if (_babyTrackerTabController != null &&
-        _babyTrackerTabController!.indexIsChanging == false && // Ensure it's a confirmed change
-        _babyTrackerTabController!.index == 1 && // 1 is Growth Diary tab
-        _selectedMode == GrowthScreenMode.baby) {
-      // Refresh diary entries from Firebase
-      _refreshDiaryEntries();
+      
+      // When switching to Growth Diary tab, only refresh if needed
+      if (_babyTrackerTabController!.index == 1 && // 1 is Growth Diary tab
+          _selectedMode == GrowthScreenMode.baby &&
+          _allDiaryEntries.isEmpty) { // Only refresh if no entries
+        // Refresh diary entries from Firebase
+        _refreshDiaryEntries();
+      }
     }
   }
 
