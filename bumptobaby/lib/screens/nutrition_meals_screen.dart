@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+// import 'package:shared_preferences/shared_preferences.dart'; // Comment out SharedPreferences
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Add Firebase import
+import 'package:firebase_auth/firebase_auth.dart'; // Add Firebase Auth import
 
 // Model for a recipe - helps with structured data
 class Recipe {
@@ -95,6 +97,8 @@ class RecipeDisplayScreen extends StatefulWidget {
 
 class _RecipeDisplayScreenState extends State<RecipeDisplayScreen> {
   bool _isSaved = false;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
   void initState() {
@@ -103,47 +107,106 @@ class _RecipeDisplayScreenState extends State<RecipeDisplayScreen> {
   }
 
   Future<void> _checkIfSaved() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedRecipesJson = prefs.getStringList('saved_recipes') ?? [];
-    setState(() {
-      _isSaved = savedRecipesJson.any((jsonString) => Recipe.fromJson(jsonDecode(jsonString)).id == widget.recipe.id);
-    });
+    final user = _auth.currentUser;
+    if (user == null) {
+      setState(() {
+        _isSaved = false;
+      });
+      return;
+    }
+    try {
+      final recipeQuery = await _firestore
+          .collection('recipes')
+          .where('id', isEqualTo: widget.recipe.id)
+          .where('userId', isEqualTo: user.uid)
+          .limit(1) // Optimization: we only need to know if it exists
+          .get();
+          
+      setState(() {
+        _isSaved = recipeQuery.docs.isNotEmpty;
+      });
+    } catch (e) {
+      print('Error checking if recipe is saved: $e');
+      setState(() {
+        _isSaved = false; // Assume not saved on error
+      });
+      // Optionally show a snackbar error here if needed
+    }
   }
 
-  Future<void> _toggleSaveRecipe() async {
-    final prefs = await SharedPreferences.getInstance();
-    List<String> savedRecipesJson = prefs.getStringList('saved_recipes') ?? [];
-    
-    if (_isSaved) {
-      // Remove recipe
-      savedRecipesJson.removeWhere((jsonString) => Recipe.fromJson(jsonDecode(jsonString)).id == widget.recipe.id);
+  Future<void> _toggleSaveRecipe(Recipe recipe) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      print("User not signed in. Cannot save recipe.");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recipe removed!', style: GoogleFonts.poppins()))
+        SnackBar(content: Text('Please sign in to save recipes', style: GoogleFonts.poppins()))
       );
-    } else {
-      // Add recipe
-      savedRecipesJson.add(jsonEncode(widget.recipe.toJson()));
-       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recipe saved!', style: GoogleFonts.poppins()))
-      );
+      return;
     }
-    await prefs.setStringList('saved_recipes', savedRecipesJson);
-    setState(() {
-      _isSaved = !_isSaved;
-    });
+
+    final recipeDocRefQuery = _firestore
+        .collection('recipes')
+        .where('id', isEqualTo: recipe.id)
+        .where('userId', isEqualTo: user.uid)
+        .limit(1);
+
+    try {
+      final querySnapshot = await recipeDocRefQuery.get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        // Recipe exists, so delete it
+        await querySnapshot.docs.first.reference.delete();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Recipe removed!', style: GoogleFonts.poppins()))
+        );
+        setState(() {
+          _isSaved = false;
+        });
+      } else {
+        // Recipe doesn't exist, so add it
+        // Ensure all fields are present for Firestore, especially if they are optional in the model
+        final recipeData = recipe.toJson();
+        recipeData['userId'] = user.uid;
+        recipeData['timestamp'] = FieldValue.serverTimestamp(); // Added for ordering/querying later
+
+        // Add default values for any potentially null fields expected by Firestore if not handled in toJson
+        recipeData.putIfAbsent('priceRange', () => null);
+        recipeData.putIfAbsent('selectedLifeStage', () => null);
+
+
+        await _firestore.collection('recipes').add(recipeData);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Recipe saved!', style: GoogleFonts.poppins()))
+        );
+        setState(() {
+          _isSaved = true;
+        });
+      }
+      // No need to call _checkIfSaved() here as we're directly setting _isSaved
+    } catch (e) {
+      print('Error toggling recipe save: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update recipe status. Please try again.', style: GoogleFonts.poppins()))
+      );
+      // Optionally, re-fetch state to be safe, or revert optimistic update
+      _checkIfSaved(); 
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.recipe.title, style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.black)),
+        title: Text(
+          'Suggested Recipe',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.black)
+        ),
         backgroundColor: const Color(0xFFF8AFAF),
         iconTheme: const IconThemeData(color: Colors.black),
         actions: [
           IconButton(
             icon: Icon(_isSaved ? Icons.bookmark : Icons.bookmark_border, color: Colors.black),
-            onPressed: _toggleSaveRecipe,
+            onPressed: () => _toggleSaveRecipe(widget.recipe),
           )
         ],
       ),
@@ -152,8 +215,22 @@ class _RecipeDisplayScreenState extends State<RecipeDisplayScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Description first
-            Text(widget.recipe.description, style: GoogleFonts.poppins(fontSize: 16, fontStyle: FontStyle.italic)),
+            // Recipe title moved here, below the app bar
+            Text(
+              widget.recipe.title,
+              style: GoogleFonts.poppins(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF4E342E),
+              ),
+            ),
+            const SizedBox(height: 16), // Add spacing after title
+            
+            // Description
+            Text(
+              widget.recipe.description, 
+              style: GoogleFonts.poppins(fontSize: 16, fontStyle: FontStyle.italic)
+            ),
             const SizedBox(height: 12),
             
             // Capsules/Tags moved here (right after description)
@@ -317,6 +394,8 @@ class _NutritionMealsScreenState extends State<NutritionMealsScreen> with Single
   bool _isLoadingRecipe = false;
   List<Recipe> _savedRecipes = [];
   bool _isLoadingSavedRecipes = false;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   String? _selectedStage;
   final TextEditingController _ingredientsController = TextEditingController();
@@ -366,12 +445,28 @@ class _NutritionMealsScreenState extends State<NutritionMealsScreen> with Single
 
   Future<void> _loadSavedRecipes() async {
     setState(() => _isLoadingSavedRecipes = true);
-    final prefs = await SharedPreferences.getInstance();
-    final savedRecipesJson = prefs.getStringList('saved_recipes') ?? [];
-    setState(() {
-      _savedRecipes = savedRecipesJson.map((jsonString) => Recipe.fromJson(jsonDecode(jsonString))).toList();
-      _isLoadingSavedRecipes = false;
-    });
+    try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        final recipesSnapshot = await _firestore
+            .collection('recipes')
+            .where('userId', isEqualTo: user.uid)
+            .get();
+            
+        setState(() {
+          _savedRecipes = recipesSnapshot.docs
+              .map((doc) => Recipe.fromJson(doc.data()))
+              .toList();
+        });
+      }
+    } catch (e) {
+      print('Error loading recipes: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load recipes', style: GoogleFonts.poppins()))
+      );
+    } finally {
+      setState(() => _isLoadingSavedRecipes = false);
+    }
   }
 
   @override
@@ -598,17 +693,20 @@ Servings: ${aiRecipe.servings}
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildCreateRecipeTab(),
-          _buildSavedRecipesTab(),
-        ],
+      body: SafeArea(
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildCreateRecipeTab(),
+            _buildSavedRecipesTab(),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildCreateRecipeTab() {
+    // Simplified layout for better scrolling and overflow handling
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -624,7 +722,7 @@ Servings: ${aiRecipe.servings}
             ),
             child: DropdownButtonFormField<String>(
               decoration: const InputDecoration(
-                border: InputBorder.none, // Remove default underline
+                border: InputBorder.none,
                  hintText: 'Select your current stage',
               ),
               hint: Text('Select your current stage', style: GoogleFonts.poppins(color: Colors.grey[600])),
@@ -658,6 +756,7 @@ Servings: ${aiRecipe.servings}
             style: GoogleFonts.poppins(),
             minLines: 2,
             maxLines: 4,
+            textInputAction: TextInputAction.done,
           ),
 
           _buildSectionTitle('Staple Ingredients You Also Have'),
@@ -724,7 +823,6 @@ Servings: ${aiRecipe.servings}
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(25.0),
                   ),
-                  textStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)
                 ),
                 child: Text(
                   'Generate Recipe',
@@ -732,7 +830,7 @@ Servings: ${aiRecipe.servings}
                 ),
               ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 20), // Padding at the bottom
         ],
       ),
     );

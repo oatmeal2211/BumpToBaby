@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart'; // Import for image picking
 import 'package:url_launcher/url_launcher.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:bumptobaby/utils/chat_actions.dart';
 
 class HealthHelpPage extends StatefulWidget {
   const HealthHelpPage({super.key});
@@ -44,30 +45,20 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
   final ImagePicker _imagePicker = ImagePicker();
   File? _selectedImage;
   
-  // Hardcoded response for image messages - now an array of languages
-  final Map<String, List<String>> _imageResponsesByLanguage = {
-    'English': [
-      "Thank you for sharing the image. It appears that there is swelling in the leg. Swelling in the legs during pregnancy is quite common, especially in the later stages, due to increased fluid retention and pressure from the growing uterus. However, certain types of swelling may require medical attention. I recommend she be seen by a healthcare provider to ensure everything is progressing safely. It's always better to have a professional examine the condition directly to provide appropriate care and peace of mind.",
-      "Thank you for sharing the image. The photo shows a visible rash on your abdomen. Mild skin changes and itchiness can be common during pregnancy due to stretching skin and hormonal changes. However, certain rashes—especially if they are widespread or very itchy—may require further evaluation. I recommend showing this to a healthcare provider to rule out any pregnancy-specific skin conditions such as PUPPP or other causes. They can help you find safe ways to relieve the discomfort.",
-      "Thank you for sharing the image. The dark vertical line on your belly, known as linea nigra, is a normal skin change that occurs during pregnancy due to hormonal shifts. It's completely harmless and usually fades on its own after delivery. There's no need to worry, but feel free to ask if you notice any sudden changes or have concerns about your skin during pregnancy."
-    ],
-    'Malay': [
-      "Terima kasih kerana berkongsi gambar. Kelihatan bahawa terdapat bengkak di kaki. Bengkak di kaki semasa kehamilan agak biasa, terutamanya pada peringkat akhir, disebabkan oleh peningkatan pengekalan cecair dan tekanan dari rahim yang semakin membesar. Namun, jenis bengkak tertentu mungkin memerlukan perhatian perubatan. Saya cadangkan dia berjumpa dengan penyedia penjagaan kesihatan untuk memastikan segalanya berkembang dengan selamat. Lebih baik mempunyai profesional memeriksa keadaan secara langsung untuk memberikan penjagaan yang sesuai dan ketenangan fikiran.",
-      "Terima kasih kerana berkongsi gambar. Foto menunjukkan ruam yang kelihatan pada perut anda. Perubahan kulit ringan dan gatal boleh menjadi perkara biasa semasa kehamilan disebabkan oleh kulit yang meregang dan perubahan hormon. Namun, ruam tertentu—terutamanya jika ia tersebar luas atau sangat gatal—mungkin memerlukan penilaian lanjut. Saya cadangkan anda menunjukkannya kepada penyedia penjagaan kesihatan untuk menyingkirkan sebarang keadaan kulit khusus kehamilan seperti PUPPP atau sebab lain. Mereka boleh membantu anda mencari cara yang selamat untuk melegakan ketidakselesaan.",
-      "Terima kasih kerana berkongsi gambar. Garis menegak gelap di perut anda, yang dikenali sebagai linea nigra, adalah perubahan kulit normal yang berlaku semasa kehamilan disebabkan oleh perubahan hormon. Ia sama sekali tidak berbahaya dan biasanya pudar dengan sendirinya selepas kelahiran. Tidak perlu risau, tetapi jangan ragu untuk bertanya jika anda perasan sebarang perubahan mendadak atau mempunyai kebimbangan tentang kulit anda semasa kehamilan."
-    ],
-    'Chinese': [
-      "感谢分享图片。看起来腿部有肿胀。妊娠期间腿部肿胀是很常见的，尤其是在后期，这是由于体液潴留增加和子宫增大造成的压力。然而，某些类型的肿胀可能需要医疗关注。我建议她去看医疗保健提供者，确保一切进展安全。最好让专业人士直接检查这种情况，以提供适当的护理和安心。",
-      "感谢分享图片。照片显示您腹部有明显的皮疹。妊娠期间轻微的皮肤变化和瘙痒很常见，这是由于皮肤拉伸和荷尔蒙变化引起的。然而，某些皮疹，尤其是分布广泛或非常瘙痒的，可能需要进一步评估。我建议您将此展示给医疗保健提供者，以排除任何与妊娠相关的特定皮肤状况，如PUPPP或其他原因。他们可以帮助您找到缓解不适的安全方法。",
-      "感谢分享图片。您腹部的深色垂直线，被称为妊娠线（linea nigra），是由于荷尔蒙变化而在妊娠期间出现的正常皮肤变化。它完全无害，通常在分娩后自行褪色。不需要担心，但如果您注意到任何突然变化或对妊娠期间的皮肤有任何疑虑，请随时询问。"
-    ],
-    'Tamil': [
-      "படத்தைப் பகிர்ந்தமைக்கு நன்றி. காலில் வீக்கம் இருப்பதாகத் தெரிகிறது. கர்ப்பகாலத்தில் கால்களில் வீக்கம் மிகவும் பொதுவானது, குறிப்பாக பிற்கால கட்டங்களில், அதிகரித்த திரவ தக்கவைப்பு மற்றும் வளரும் கருப்பையின் அழுத்தம் காரணமாக. எனினும், சில வகையான வீக்கங்கள் மருத்துவ கவனிப்பு தேவைப்படலாம். எல்லாம் பாதுகாப்பாக முன்னேறுகிறதா என்பதை உறுதிப்படுத்த அவரை ஒரு சுகாதார வழங்குநரால் பார்க்க வேண்டும் என்று பரிந்துரைக்கிறேன். பொருத்தமான பராமரிப்பு மற்றும் மன அமைதி வழங்க நிலைமையை நேரடியாக ஒரு நிபுணர் பரிசோதிப்பது எப்போதும் சிறந்தது.",
-      "படத்தைப் பகிர்ந்தமைக்கு நன்றி. புகைப்படம் உங்கள் வயிற்றில் தெளிவான அரிப்பைக் காட்டுகிறது. இலேசான தோல் மாற்றங்கள் மற்றும் அரிப்பு கர்ப்பகாலத்தில் பொதுவானவை, இது தோல் விரிவடைதல் மற்றும் ஹார்மோன் மாற்றங்கள் காரணமாக. இருப்பினும், சில அரிப்புகள்—குறிப்பாக அவை பரவலாக இருந்தால் அல்லது மிகவும் அரிப்பாக இருந்தால்—மேலும் மதிப்பீடு தேவைப்படலாம். PUPPP போன்ற கர்ப்பகால குறிப்பிட்ட தோல் நிலைகள் அல்லது பிற காரணங்களை விலக்குவதற்கு இதை ஒரு சுகாதார வழங்குநருக்குக் காட்டுமாறு பரிந்துரைக்கிறேன். அசௌகரியத்தைத் தணிக்க பாதுகாப்பான வழிகளைக் கண்டுபிடிக்க அவர்கள் உங்களுக்கு உதவ முடியும்.",
-      "படத்தைப் பகிர்ந்தமைக்கு நன்றி. உங்கள் வயிற்றில் உள்ள கருமையான செங்குத்து கோடு, லினியா நைக்ரா என்று அழைக்கப்படுகிறது, இது ஹார்மோன் மாற்றங்கள் காரணமாக கர்ப்பகாலத்தில் ஏற்படும் ஒரு சாதாரண தோல் மாற்றம். இது முற்றிலும் தீங்கற்றது மற்றும் பொதுவாக பிரசவத்திற்குப் பிறகு தானாகவே மறைந்துவிடும். கவலைப்பட வேண்டிய அவசியமில்லை, ஆனால் திடீர் மாற்றங்களைக் கவனித்தால் அல்லது கர்ப்பகாலத்தில் உங்கள் தோல் பற்றிய கவலைகள் இருந்தால் தயங்காமல் கேளுங்கள்."
-    ]
-  };
-  int _imageResponseIndex = 0; // Counter for cycling through image responses
+  // Comment out the hardcoded image responses
+  // final Map<String, List<String>> _imageResponsesByLanguage = {
+  //   'English': [
+  //     "Thank you for sharing the image...",
+  //     "Thank you for sharing the image. The photo shows...",
+  //     "Thank you for sharing the image. The dark vertical line..."
+  //   ],
+  //   'Malay': [
+  //     "Terima kasih kerana berkongsi gambar...",
+  //     "Terima kasih kerana berkongsi gambar. Foto...",
+  //     "Terima kasih kerana berkongsi gambar. Garis..."
+  //   ],
+  //   // ... other languages ...
+  // };
 
   final FlutterTts _flutterTts = FlutterTts();
   bool _isSpeaking = false; // Track if TTS is currently active
@@ -76,6 +67,32 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
   // For speech recognition
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isListening = false;
+
+  // Add suggestion questions
+  final List<String> _initialSuggestions = [
+    "What are common pregnancy symptoms?",
+    "How to track my baby's growth?",
+    "What foods should I avoid during pregnancy?",
+    "When should I see a doctor?"
+  ];
+
+  // Add initial greeting messages by language
+  final Map<String, String> _greetingsByLanguage = {
+    'English': """Hello! 👋 I'm your pregnancy companion, here to help you with any questions about your pregnancy journey.
+
+Here are some questions you might want to ask:""",
+    'Malay': """Hai! 👋 Saya adalah rakan kehamilan anda, di sini untuk membantu anda dengan sebarang soalan tentang perjalanan kehamilan anda.
+
+Berikut adalah beberapa soalan yang mungkin ingin anda tanyakan:""",
+    'Chinese': """你好！👋 我是您的妊娠伴侣，在这里帮助您解答关于妊娠旅程的任何问题。
+
+以下是一些您可能想问的问题：""",
+    'Tamil': """வணக்கம்! 👋 நான் உங்கள் கர்ப்பகால துணை, உங்கள் கர்ப்பகால பயணம் பற்றிய எந்த கேள்விகளுக்கும் உதவ இங்கே இருக்கிறேன்.
+
+நீங்கள் கேட்க விரும்பக்கூடிய சில கேள்விகள் இங்கே:"""
+  };
+
+  bool _isDisclaimerExpanded = false; // State variable for disclaimer visibility
 
   @override
   void initState() {
@@ -86,13 +103,11 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
         print("API Key not found. Make sure your .env file is set up correctly.");
       }
     }
-    _loadMessages(); // Load messages when the widget initializes
-    _loadLanguagePreference(); // Load language preference
+    _loadMessages();
+    _loadLanguagePreference();
     
-    // Initialize speech recognition
     _initSpeech();
     
-    // Set up TTS completion listener
     _flutterTts.setCompletionHandler(() {
       if (mounted) {
         setState(() {
@@ -102,8 +117,14 @@ class _HealthHelpPageState extends State<HealthHelpPage> {
       }
     });
     
-    // Initialize filtered messages with all messages
     _filteredMessages = List.from(_messages);
+
+    // Add initial greeting after a short delay only if there are no messages
+    Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && _messages.isEmpty) { // Check if there are no chat messages
+            _sendInitialGreeting();
+        }
+    });
   }
 
   @override
@@ -301,47 +322,254 @@ Adakah anda ingin membuka pautan ini?
     }
   }
   
-  // Function to send image message
-  Future<void> _sendImageMessage(File imageFile) async { // Accept File as parameter
-    // No longer need to check _selectedImage here as imageFile is passed
+  // Function to call Qwen VL API for image analysis
+  Future<String> _callQwenApi(File imageFile, {String userText = ''}) async {
+    try {
+      if (kDebugMode) {
+        print("Starting Qwen API call...");
+        print("Image file path: ${imageFile.path}");
+        print("User text: $userText");
+      }
+
+      final bytes = await imageFile.readAsBytes();
+      final base64Image = base64Encode(bytes);
+      
+      if (kDebugMode) {
+        print("Successfully converted image to base64");
+        print("Base64 length: ${base64Image.length}");
+      }
+      
+      final apiKey = dotenv.env['DASHSCOPE_API_KEY'];
+      if (apiKey == null) {
+        if (kDebugMode) {
+          print("Error: DASHSCOPE_API_KEY not found in .env file");
+        }
+        return "Error: Qwen API Key is not configured.";
+      }
+
+      if (kDebugMode) {
+        print("API Key found, preparing API request...");
+      }
+
+      final url = Uri.parse('https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions');
+      
+      // Prepare language instruction
+      String languageInstruction = "";
+      if (_selectedLanguage != 'English') {
+        languageInstruction = "Please respond in $_selectedLanguage language. ";
+      }
+
+      // Prepare the prompt with user's input text
+      String promptText = "Please analyze this image related to pregnancy or baby development.";
+      if (userText.isNotEmpty) {
+        promptText = "$userText\n\nPlease analyze this image in the context of my question.";
+      }
+      
+      final fullSystemPrompt = "$_systemPrompt $languageInstruction";
+      final String mimeType = "image/jpeg";  // Using jpeg as default mime type
+      
+      // Create request body similar to review_resume_page approach
+      final Map<String, dynamic> requestBody = {
+        'model': 'qwen-vl-max-latest',
+        'messages': [
+          {
+            'role': 'system',
+            'content': fullSystemPrompt
+          },
+          {
+            'role': 'user',
+            'content': [
+              {'type': 'text', 'text': promptText},
+              {
+                'type': 'image_url',
+                'image_url': {'url': 'data:$mimeType;base64,$base64Image'}
+              }
+            ]
+          }
+        ]
+      };
+
+      if (kDebugMode) {
+        print("Sending request to Qwen API...");
+        print("Request URL: $url");
+        print("Request headers: {'Content-Type': 'application/json; charset=utf-8', 'Authorization': 'Bearer ${apiKey.substring(0, 5)}...'}");
+        print("Request prompt: $promptText");
+      }
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+          'Content-Type': 'application/json; charset=utf-8', // Specify UTF-8
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      if (kDebugMode) {
+        print("Received response from Qwen API");
+        print("Response status code: ${response.statusCode}");
+        print("Response headers: ${response.headers}");
+      }
+
+      if (response.statusCode == 200) {
+        // Use UTF-8 decoding for proper character handling
+        final decodedBody = utf8.decode(response.bodyBytes);
+        if (kDebugMode) {
+          print("Response decoded body: $decodedBody");
+        }
+        
+        final result = jsonDecode(decodedBody);
+        
+        if (result['choices'] != null && result['choices'].isNotEmpty) {
+          final message = result['choices'][0]['message'];
+          if (message != null && message['content'] != null) {
+            final content = message['content'].toString();
+            
+            if (kDebugMode) {
+              print("Successfully parsed response: $content");
+            }
+            
+            return content;
+          }
+        }
+        return "Sorry, couldn't analyze the image. API response format was unexpected.";
+      } else {
+        // Properly decode error response
+        final errorBody = utf8.decode(response.bodyBytes);
+        if (kDebugMode) {
+          print("Qwen API Error ${response.statusCode}");
+          print("Error response body: $errorBody");
+        }
+        return "Error: Image analysis failed (Status: ${response.statusCode}). Please try again later.";
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print("Error calling Qwen API: $e");
+        print("Stack trace: $stackTrace");
+      }
+      return "Error: Failed to analyze image. Please try again later.";
+    }
+  }
+
+  // Modify the _sendImageMessage function to include text input and action buttons
+  Future<void> _sendImageMessage(File imageFile) async {
+    // Get any text that might be in the text field
+    String userText = _textController.text.trim();
+    if (userText.isNotEmpty) {
+      _textController.clear();  // Clear the text input
+    }
     
     final userImageMsg = {
       "isUser": true, 
       "hasImage": true, 
-      "imagePath": imageFile.path, // Use the passed imageFile
-      "text": "Sent an image", 
+      "imagePath": imageFile.path,
+      "text": userText.isEmpty ? "Sent an image" : userText,
       "time": _getCurrentTime()
     };
     final loadingMsg = {"isUser": false, "isLoadingPlaceholder": true, "time": _getCurrentTime()};
     
     setState(() {
       _messages.insert(0, userImageMsg);
-      _messages.insert(0, loadingMsg); // Add loading indicator
-      _filteredMessages = List.from(_messages); // Update filtered messages
+      _messages.insert(0, loadingMsg);
+      _filteredMessages = List.from(_messages);
       _isLoading = true;
     });
     await _saveMessages();
     
-    // Simulate a delay before showing the hardcoded response
-    await Future.delayed(const Duration(seconds: 5));
+    // Call Qwen API with both the image and any user text
+    final response = await _callQwenApi(imageFile, userText: userText);
 
-    // Add the hardcoded response for image in the selected language
-    if (mounted) { // Check if the widget is still in the tree
-      // Get responses for the selected language, or fall back to English
-      final List<String> responses = _imageResponsesByLanguage[_selectedLanguage] ?? 
-                                    _imageResponsesByLanguage['English']!;
-      
-      final String currentImageResponse = responses[_imageResponseIndex];
-      _imageResponseIndex = (_imageResponseIndex + 1) % responses.length; // Increment and loop
+    // Create a set to avoid duplicate actions
+    final Set<ChatAction> actionSet = {};
+    
+    // Check for keywords in the response and add relevant actions
+    final responseLower = response.toLowerCase();
+    
+    // Check for growth and development related keywords
+    if (responseLower.contains("track growth") || 
+        responseLower.contains("baby growth") || 
+        responseLower.contains("milestone") ||
+        responseLower.contains("development") ||
+        responseLower.contains("weight") ||
+        responseLower.contains("height") ||
+        responseLower.contains("measurement")) {
+      actionSet.add(ChatActionHandler.growthTracker);
+    }
 
+    // Check for nutrition related keywords
+    if (responseLower.contains("healthy eating") || 
+        responseLower.contains("dietary advice") ||
+        responseLower.contains("nutrition") ||
+        responseLower.contains("food") ||
+        responseLower.contains("diet") ||
+        responseLower.contains("vitamin") ||
+        responseLower.contains("nutrient")) {
+      actionSet.add(ChatActionHandler.nutritionGuide);
+    }
+
+    // Check for health tracking related keywords
+    if (responseLower.contains("wellness check") || 
+        responseLower.contains("health condition") ||
+        responseLower.contains("monitor health") ||
+        responseLower.contains("vital signs") ||
+        responseLower.contains("symptoms") ||
+        responseLower.contains("health tracking") ||
+        responseLower.contains("vaccination") ||
+        responseLower.contains("medical history")) {
+      actionSet.add(ChatActionHandler.healthTracker);
+    }
+
+    // Check for family planning related keywords
+    if (responseLower.contains("planning a family") || 
+        responseLower.contains("pregnancy planning") ||
+        responseLower.contains("fertility") ||
+        responseLower.contains("conception") ||
+        responseLower.contains("family planning") ||
+        responseLower.contains("trying to conceive")) {
+      actionSet.add(ChatActionHandler.familyPlanning);
+    }
+
+    // Check for clinic related keywords
+    if (responseLower.contains("find a clinic") || 
+        responseLower.contains("nearest doctor") ||
+        responseLower.contains("medical center") ||
+        responseLower.contains("healthcare provider") ||
+        responseLower.contains("hospital") ||
+        responseLower.contains("appointment") ||
+        responseLower.contains("consultation")) {
+      actionSet.add(ChatActionHandler.nearestClinic);
+    }
+
+    // Check for community related keywords
+    if (responseLower.contains("join community") || 
+        responseLower.contains("moms group") ||
+        responseLower.contains("support group") ||
+        responseLower.contains("connect with others") ||
+        responseLower.contains("share experiences") ||
+        responseLower.contains("discussion forum")) {
+      actionSet.add(ChatActionHandler.community);
+    }
+
+    // Check for learning resource related keywords
+    if (responseLower.contains("educational resources") || 
+        responseLower.contains("online classes") ||
+        responseLower.contains("learn more") ||
+        responseLower.contains("video guide") ||
+        responseLower.contains("tutorial") ||
+        responseLower.contains("learning materials")) {
+      actionSet.add(ChatActionHandler.audioVisualLearning);
+    }
+
+    if (mounted) {
       setState(() {
-        _messages.removeWhere((msg) => msg['isLoadingPlaceholder'] == true); // Remove loading indicator
+        _messages.removeWhere((msg) => msg['isLoadingPlaceholder'] == true);
         _messages.insert(0, {
           "isUser": false, 
-          "text": currentImageResponse, // Use the selected response
-          "time": _getCurrentTime()
+          "text": response,
+          "time": _getCurrentTime(),
+          if (actionSet.isNotEmpty) "actions": actionSet.map((a) => a.toJson()).toList(),
         });
-        _filteredMessages = List.from(_messages); // Update filtered messages
+        _filteredMessages = List.from(_messages);
         _isLoading = false;
       });
       await _saveMessages();
@@ -360,23 +588,114 @@ Adakah anda ingin membuka pautan ini?
     setState(() {
       _messages.insert(0, userMsg);
       _messages.insert(0, loadingMsg);
-      _filteredMessages = List.from(_messages); // Update filtered messages
+      _filteredMessages = List.from(_messages);
       _isLoading = true;
     });
-    await _saveMessages(); // Save after adding user message and placeholder
+    await _saveMessages();
 
     String botResponse = "Sorry, something went wrong while getting a response.";
+    List<ChatAction>? actions;
+
     try {
-      // Limit the context to the last 5 messages
-      final limitedMessages = _messages.take(10).toList(); // Get the last 10 messages
+      final limitedMessages = _messages.take(10).toList();
       final fullPrompt = "$_systemPrompt\n\n${limitedMessages.map((msg) => msg['text']).join('\n')}\nUser: $userMessageText\nAI:";
 
-      // Print the concatenated message to the debug console
       if (kDebugMode) {
         print("Sending to Gemini API: $fullPrompt");
       }
 
       botResponse = await _callGeminiApi(userMessageText);
+      
+      // Create a set to avoid duplicate actions
+      final Set<ChatAction> actionSet = {};
+      
+      // Check for keywords and add relevant actions
+      final response = botResponse.toLowerCase();
+      
+      if (response.contains("growth") || 
+          response.contains("weight") ||
+          response.contains("height") ||
+          response.contains("measurement") ||
+          response.contains("development") ||
+          response.contains("milestone")) {
+        actionSet.add(ChatActionHandler.growthTracker);
+      }
+      
+      if (response.contains("nutrition") || 
+          response.contains("food") ||
+          response.contains("diet") ||
+          response.contains("meal") ||
+          response.contains("eat") ||
+          response.contains("vitamin") ||
+          response.contains("supplement")) {
+        actionSet.add(ChatActionHandler.nutritionGuide);
+      }
+      
+      if (response.contains("health") || 
+          response.contains("checkup") ||
+          response.contains("monitor") ||
+          response.contains("track") ||
+          response.contains("lifestyle")||
+          response.contains("mood")||
+          response.contains("sleep")||
+          response.contains("vaccination")||
+          response.contains("schedule")) {
+        actionSet.add(ChatActionHandler.healthTracker);
+      }
+
+      if (response.contains("family plan") || 
+          response.contains("contraception") ||
+          response.contains("birth control") ||
+          response.contains("conception") ||
+          response.contains("trying to conceive") ||
+          response.contains("fertility") ||
+          response.contains("pregnant")||
+          response.contains("have a baby")||
+          response.contains("want a baby")) {
+        actionSet.add(ChatActionHandler.familyPlanning);
+      }
+
+      if (response.contains("clinic") || 
+          response.contains("hospital") ||
+          response.contains("doctor") ||
+          response.contains("medical center") ||
+          response.contains("healthcare provider") ||
+          response.contains("appointment") ||
+          response.contains("checkup") ||
+          response.contains("nearby") ||
+          response.contains("location")||
+          response.contains("vaccination")) {
+        actionSet.add(ChatActionHandler.nearestClinic);
+      }
+
+      if (response.contains("community") || 
+          response.contains("support group") ||
+          response.contains("forum") ||
+          response.contains("chat") ||
+          response.contains("connect") ||
+          response.contains("share") ||
+          response.contains("experience") ||
+          response.contains("other moms") ||
+          response.contains("discussion")) {
+        actionSet.add(ChatActionHandler.community);
+      }
+
+      if (response.contains("learn") || 
+          response.contains("video") ||
+          response.contains("audio") ||
+          response.contains("watch") ||
+          response.contains("listen") ||
+          response.contains("resource") ||
+          response.contains("guide") ||
+          response.contains("tutorial") ||
+          response.contains("education")) {
+        actionSet.add(ChatActionHandler.audioVisualLearning);
+      }
+
+      // Convert set to list if any actions were added
+      if (actionSet.isNotEmpty) {
+        actions = actionSet.toList();
+      }
     } catch (e) {
       botResponse = "Sorry, I couldn't get a response: $e";
       if (kDebugMode) {
@@ -386,8 +705,13 @@ Adakah anda ingin membuka pautan ini?
       if (mounted) {
         setState(() {
           _messages.removeWhere((msg) => msg['isLoadingPlaceholder'] == true);
-          _messages.insert(0, {"isUser": false, "text": botResponse, "time": _getCurrentTime()});
-          _filteredMessages = List.from(_messages); // Update filtered messages
+          _messages.insert(0, {
+            "isUser": false, 
+            "text": botResponse, 
+            "time": _getCurrentTime(),
+            if (actions != null) "actions": actions.map((a) => a.toJson()).toList(),
+          });
+          _filteredMessages = List.from(_messages);
           _isLoading = false;
         });
         await _saveMessages();
@@ -400,7 +724,6 @@ Adakah anda ingin membuka pautan ini?
         setState(() {
             _messages.clear();
             _filteredMessages.clear(); // Clear filtered messages too
-            _imageResponseIndex = 0; // Reset the image response counter
         });
         await _saveMessages(); // This will save an empty list
     }
@@ -663,58 +986,74 @@ Adakah anda ingin membuka pautan ini?
     }
   }
 
+  // Send initial greeting message
+  void _sendInitialGreeting() {
+    final greeting = _greetingsByLanguage[_selectedLanguage] ?? _greetingsByLanguage['English']!;
+    
+    setState(() {
+      _messages.insert(0, {
+        "isUser": false,
+        "text": greeting,
+        "time": _getCurrentTime(),
+        "showSuggestions": true // Flag to show suggestion buttons
+      });
+      _filteredMessages = List.from(_messages);
+    });
+    _saveMessages();
+  }
+
+  // Handle suggestion button tap
+  void _handleSuggestionTap(String suggestion) {
+    _textController.text = suggestion;
+    _handleSendMessage();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: _isSearching
-            ? TextField(
-                controller: _searchController,
-                decoration: const InputDecoration(
-                  hintText: 'Search messages...',
-                  border: InputBorder.none,
-                  hintStyle: TextStyle(color: Colors.grey),
-                ),
-                style: const TextStyle(color: Color(0xFF005792)),
-                onChanged: _searchMessages,
-                autofocus: true,
-              )
-            : Row(
+        toolbarHeight: 70, // Make the header taller
+        title: Row(
                 children: [
                   Text(
                     'Health Help', 
                     style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w600,
                       color: Colors.white,
+                fontSize: 24, // Slightly larger text
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // Language dropdown
+            const SizedBox(width: 16), // Uniform padding
                   Container(
+                    height: 36, // Shorter height
+                    margin: EdgeInsets.symmetric(vertical: 8), // Add padding outside container
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.white.withOpacity(0.3)),
-                      borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(20),
+                color: Colors.white.withOpacity(0.1),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2), // Reduced vertical padding
                     child: DropdownButton<String>(
                       value: _selectedLanguage,
-                      icon: const Icon(Icons.arrow_drop_down, size: 18, color: Colors.white),
-                      underline: Container(), // Remove the default underline
+                icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 20),
+                underline: Container(),
                       dropdownColor: Color(0xFF1E6091),
                       items: _languages.map((String language) {
                         return DropdownMenuItem<String>(
                           value: language,
                           child: Row(
+                      mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.language, size: 18, color: Colors.white), // Language icon
-                              const SizedBox(width: 8), // Space between icon and text
+                        const Icon(Icons.language, size: 16, color: Colors.white),
+                        const SizedBox(width: 6),
                               Text(
                                 language, 
-                                style: const TextStyle(
+                          style: GoogleFonts.poppins(
                                   fontSize: 14, 
-                                  color: Colors.white
-                                )
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                          ),
                               ),
                             ],
                           ),
@@ -745,65 +1084,103 @@ Adakah anda ingin membuka pautan ini?
                 ],
               ),
         backgroundColor: Color(0xFF1E6091),
+        elevation: 0,
         actions: [
-          IconButton(
-            icon: Icon(_isSearching ? Icons.close : Icons.search),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0), // Uniform padding
+            child: IconButton(
+              icon: Icon(_isSearching ? Icons.close : Icons.search,
+                  color: Colors.white, size: 22),
             onPressed: _toggleSearch,
-            color: Colors.white,
+            ),
           ),
         ],
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
-            child: Container(
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
               color: Colors.white,
+              border: Border(
+                bottom: BorderSide(
+                  color: Colors.grey[200]!,
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center, // Center alignment
                       children: [
                         Text(
                           'Chat with our AI Assistant',
                           style: GoogleFonts.poppins(
-                              fontSize: 18.0,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E6091)),
-                        ),
-                        const SizedBox(height: 2.0),
-                        Text(
-                          '• Online',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12.0,
-                            color: Colors.green,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 18.0, // Increased from 16.0
+                            fontWeight: FontWeight.w700, // Bolder, changed from w600
+                            color: Color(0xFF1E6091),
                           ),
+                        ),
+                        const SizedBox(height: 2), // Reduced spacing between texts
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center, // Center the online status
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Online',
+                              style: GoogleFonts.poppins(
+                                fontSize: 13.0, // Slightly larger
+                                color: Colors.green,
+                                fontWeight: FontWeight.w600, // Made slightly bolder
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: Icon(Icons.delete_outline, color: Color(0xFF1E6091)),
-                    tooltip: 'Clear Chat',
-                    onPressed: _clearChat,
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Color(0xFFE8F4FF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      icon: Icon(Icons.delete_outline, color: Color(0xFF1E6091), size: 20),
+                      tooltip: 'Clear Chat',
+                      onPressed: _clearChat,
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          // Disclaimer container
           Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _isDisclaimerExpanded = !_isDisclaimerExpanded;
+                });
+              },
             child: Container(
-              padding: const EdgeInsets.all(12.0),
+                padding: const EdgeInsets.all(16.0),
               decoration: BoxDecoration(
                 color: Colors.grey[50],
                 border: Border.all(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(8.0),
+                  borderRadius: BorderRadius.circular(12.0),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -816,15 +1193,52 @@ Adakah anda ingin membuka pautan ini?
                       color: Color(0xFF1E6091),
                     ),
                   ),
-                  SizedBox(height: 4.0),
+                    const SizedBox(height: 8.0),
                   Text(
-                    'This chatbot is for informational purposes only and does not replace professional medical advice, diagnosis, or treatment. Always consult your doctor, midwife, or other qualified health provider with any questions you may have about your pregnancy or a medical condition.',
+                      'This chatbot is for informational purposes only and does not replace professional medical advice...',
+                      maxLines: _isDisclaimerExpanded ? null : 1,
+                      overflow: _isDisclaimerExpanded ? null : TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12.0,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      height: _isDisclaimerExpanded ? null : 0,
+                      child: Column(
+                        children: [
+                          Text(
+                            'diagnosis, or treatment. Always consult your doctor, midwife, or other qualified health provider with any questions you may have about your pregnancy or a medical condition.',
                     style: GoogleFonts.poppins(
                       fontSize: 12.0,
                       color: Colors.grey[800],
                     ),
                   ),
                 ],
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          _isDisclaimerExpanded ? 'See less' : 'See more',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12.0,
+                            color: Color(0xFF1E6091),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 4.0),
+                        Icon(
+                          _isDisclaimerExpanded ? Icons.expand_less : Icons.expand_more,
+                          color: Color(0xFF1E6091),
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -861,73 +1275,88 @@ Adakah anda ingin membuka pautan ini?
               ),
             ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.withOpacity(0.2),
+                  color: Colors.grey.withOpacity(0.1),
                   spreadRadius: 1,
-                  blurRadius: 3,
-                  offset: const Offset(0, -1),
+                  blurRadius: 10,
+                  offset: Offset(0, -2),
                 ),
               ],
             ),
             child: Row(
               children: [
-                IconButton(
+                Container(
+                  decoration: BoxDecoration(
+                    color: Color(0xFFE8F4FF),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: IconButton(
                   icon: const Icon(Icons.camera_alt_outlined),
                   onPressed: _showImageSourceDialog,
                   color: Color(0xFF1E6091),
                 ),
+                ),
+                SizedBox(width: 12),
                 Expanded(
-                  child: Focus(
-                    onKey: (FocusNode node, RawKeyEvent event) {
-                      if (event is RawKeyDownEvent) {
-                        if (event.isControlPressed && event.logicalKey == LogicalKeyboardKey.enter) {
-                          _handleSendMessage(); // Use the new handler
-                          return KeyEventResult.handled; // Prevent further processing
-                        }
-                      }
-                      return KeyEventResult.ignored; // Allow other key events to be processed
-                    },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
                       decoration: BoxDecoration(
-                        color: Colors.grey[100], // Input field background
-                        borderRadius: BorderRadius.circular(25.0),
-                        border: Border.all(color: Colors.grey[300]!),
+                      color: Color(0xFFF5F9FF),
+                      borderRadius: BorderRadius.circular(25),
+                      border: Border.all(color: Color(0xFFE8F4FF), width: 1.5),
                       ),
+                    child: Row(
+                      children: [
+                        Expanded(
                       child: TextField(
                         controller: _textController,
                         decoration: InputDecoration(
-                          hintText: _isListening 
-                              ? 'Listening...' 
-                              : 'Type your message here...',
+                              hintText: _isListening ? 'Listening...' : 'Type your message here...',
+                              hintStyle: GoogleFonts.poppins(
+                                color: Colors.grey[400],
+                                fontSize: 14,
+                              ),
                           border: InputBorder.none,
-                          hintStyle: GoogleFonts.poppins(color: Colors.grey[500]),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                         ),
-                        style: GoogleFonts.poppins(),
-                        keyboardType: TextInputType.multiline,
-                        maxLines: 3, // Limit to 3 lines
-                        minLines: 1, // Starts as a single line
-                        textCapitalization: TextCapitalization.sentences,
-                        scrollPhysics: const BouncingScrollPhysics(), // Make it scrollable
-                      ),
+                            style: GoogleFonts.poppins(fontSize: 14),
+                            maxLines: 3,
+                            minLines: 1,
+                          ),
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Color(0xFFE8F4FF),
+                            borderRadius: BorderRadius.circular(20),
                     ),
-                  ),
-                ),
-                IconButton(
+                          margin: EdgeInsets.only(right: 6),
+                          child: IconButton(
                   icon: Icon(
                     _isListening ? Icons.mic : Icons.mic_none_outlined,
                     color: _isListening ? Colors.red : Color(0xFF1E6091),
+                              size: 20,
                   ),
                   onPressed: _startListening,
                 ),
-                IconButton(
-                  icon: const Icon(Icons.send_outlined),
-                  onPressed: _handleSendMessage, // Use the new handler
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
                   color: Color(0xFF1E6091),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          margin: EdgeInsets.only(right: 6),
+                          child: IconButton(
+                            icon: const Icon(Icons.send_rounded),
+                            onPressed: _handleSendMessage,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -940,6 +1369,10 @@ Adakah anda ingin membuka pautan ini?
   Widget _buildMessage(Map<String, dynamic> message) {
     final bool isUser = message['isUser'] as bool;
     final bool hasImage = message['hasImage'] ?? false;
+    final bool showSuggestions = message['showSuggestions'] ?? false;
+    final List<ChatAction>? actions = message['actions'] != null 
+      ? (message['actions'] as List).map((a) => ChatAction.fromJson(a)).toList() 
+      : null;
 
     if (message['isLoadingPlaceholder'] == true) {
       return const AnimatedLoadingIndicator();
@@ -947,7 +1380,6 @@ Adakah anda ingin membuka pautan ini?
 
     final String text = message['text'] as String;
     final String time = message['time'] as String;
-    // Generate a unique ID for each message
     final String messageId = message['id'] ?? '${isUser}_${time}_${text.hashCode}';
     if (message['id'] == null) {
       message['id'] = messageId;
@@ -992,15 +1424,17 @@ Adakah anda ingin membuka pautan ini?
         messageContent = Text(text, style: GoogleFonts.poppins());
       }
     } else {
-      messageContent = MarkdownBody(
+      // Bot message with potential suggestions and actions
+      messageContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MarkdownBody(
         data: text,
-        selectable: true, // Allows users to select and copy text from markdown
+            selectable: true,
         onTapLink: (text, href, title) async {
           if (href != null) {
             if (await canLaunch(href)) {
               await launch(href);
-            } else {
-              throw 'Could not launch $href';
             }
           }
         },
@@ -1012,6 +1446,53 @@ Adakah anda ingin membuka pautan ini?
           strong: GoogleFonts.poppins(fontWeight: FontWeight.bold),
           em: GoogleFonts.poppins(fontStyle: FontStyle.italic),
         ),
+          ),
+          if (showSuggestions) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _initialSuggestions.map((suggestion) => ElevatedButton(
+                onPressed: () => _handleSuggestionTap(suggestion),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF1E6091),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+                child: Text(
+                  suggestion,
+                  style: GoogleFonts.poppins(fontSize: 12),
+                ),
+              )).toList(),
+            ),
+          ],
+          if (actions != null && actions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: actions.map((action) => ElevatedButton.icon(
+                onPressed: () => ChatActionHandler.handleAction(context, action),
+                icon: Icon(action.icon ?? Icons.arrow_forward, size: 16),
+                label: Text(
+                  action.label,
+                  style: GoogleFonts.poppins(fontSize: 12),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF1E6091),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+              )).toList(),
+            ),
+          ],
+        ],
       );
     }
 
@@ -1025,10 +1506,8 @@ Adakah anda ingin membuka pautan ini?
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(15.0),
             topRight: const Radius.circular(15.0),
-            bottomLeft:
-                isUser ? const Radius.circular(15.0) : const Radius.circular(0),
-            bottomRight:
-                isUser ? const Radius.circular(0) : const Radius.circular(15.0),
+            bottomLeft: isUser ? const Radius.circular(15.0) : const Radius.circular(0),
+            bottomRight: isUser ? const Radius.circular(0) : const Radius.circular(15.0),
           ),
           boxShadow: [
             BoxShadow(
@@ -1040,8 +1519,7 @@ Adakah anda ingin membuka pautan ini?
           ],
         ),
         child: Column(
-          crossAxisAlignment:
-              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             messageContent,
             const SizedBox(height: 4.0),

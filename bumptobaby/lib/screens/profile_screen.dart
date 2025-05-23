@@ -313,12 +313,35 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             child: Stack(
               alignment: Alignment.bottomRight,
               children: [
-                CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Colors.grey[300],
-                  backgroundImage: _profileImageUrl.isNotEmpty
-                      ? NetworkImage(_profileImageUrl)
-                      : AssetImage('lib/assets/images/BumpToBaby Logo.png') as ImageProvider,
+                Hero(
+                  tag: 'profileAvatar',
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Color(0xFF1E6091).withOpacity(0.2),
+                        width: 3,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withOpacity(0.2),
+                          spreadRadius: 1,
+                          blurRadius: 5,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 50, // Larger radius for profile screen
+                      backgroundColor: Colors.white,
+                      child: CircleAvatar(
+                        radius: 48,
+                        backgroundImage: _profileImageUrl.isNotEmpty
+                            ? NetworkImage(_profileImageUrl)
+                            : AssetImage('lib/assets/images/BumpToBaby Logo.png') as ImageProvider,
+                      ),
+                    ),
+                  ),
                 ),
                 if (_isUploadingImage)
                   CircularProgressIndicator()

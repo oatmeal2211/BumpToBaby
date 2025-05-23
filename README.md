@@ -14,8 +14,8 @@ BumpToBaby is a mobile app that centralises all you need as a mother to help you
 | **Github**   | Version Control |
 | **Perspective API** | Content Moderation |
 | **Google Maps API**   | Map Data Integration |
-
-## Features
+| **Qwen**   | Medical Misinformation Detection |
+| **PubMed API**   | Medical Data Retrieval |
 
 ### 1. User Authentication
 - Secure signup and login functionality
@@ -88,74 +88,106 @@ Eight main feature buttons providing access to:
    ```
    rules_version = '2';
    service cloud.firestore {
-     match /databases/{database}/documents {
-       // User profile rules
-       match /users/{userId} {
-         // Allow read of any user profile
-         allow read: if request.auth != null;
-         // Only allow users to modify their own profile
-         allow write: if request.auth != null && request.auth.uid == userId;
-       }
-    
-       // Posts rules
-       match /posts/{postId} {
-  		   // Anyone logged in can read posts
-  		   allow read: if request.auth != null;
-
-  		   // Only creator can update/delete their posts (excluding likes)
-  		   allow update, delete: if request.auth != null
-                           && request.auth.uid == resource.data.userId
-                           && !(request.resource.data.keys().hasAny(['likes']) &&
-                                !(request.resource.data.likes == resource.data.likes));
-
-  		   // Allow users to like/unlike by updating only the likes array
-  		   allow update: if request.auth != null &&
-                   request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
-                   request.resource.data.userId == resource.data.userId;
-
-  		   // Anyone logged in can create posts
-  		   allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+   match /databases/{database}/documents {
+    // User profile rules
+    match /users/{userId} {
+      // Allow read of any user profile
+      allow read: if request.auth != null;
+      // Only allow users to modify their own profile
+      allow write: if request.auth != null && request.auth.uid == userId;
       
-         // Allow others to update ONLY the commentsCount field
-  		   allow update: if request.auth != null &&
-                   request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount']);
-
-  		   allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-
-  		   // Comments subcollection (unchanged)
-  		   match /comments/{commentId} {
-    		   allow read: if request.auth != null;
-
-    		   // Allow comment creation only if userId is set and matches the authenticated user
-    		   allow create: if request.auth != null &&
-                     request.resource.data.keys().hasAll(['userId', 'content']) &&
-                     request.resource.data.userId == request.auth.uid;
-
-    		   // Allow only comment creator to update/delete their comment
-    		   allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
-  			   }
-		   }
+      // Allow access to babyProfiles subcollection
+      match /babyProfiles/{profileId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+        
+        // Allow access to diaryEntries subcollection
+        match /diaryEntries/{entryId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+    }
     
-       // Allow users to read and write their own family planning data
-       match /familyPlanning/{userId} {
-         allow read, write: if request.auth != null && request.auth.uid == userId;
-       }
+    // Allow access to medical_info collection
+		match /medical_info/{docId} {
+  		allow read: if request.auth != null;
+  		allow write: if request.auth != null;
+		}
+
+		// Allow access to fact_checks collection
+		match /fact_checks/{docId} {
+  		allow read: if request.auth != null;
+  		allow write: if request.auth != null;
+		}
     
-       // Allow users to read and write their own health surveys
-       match /health_surveys/{userId}/{document=**} {
-         allow read, write: if request.auth != null && request.auth.uid == userId;
-       }
+    // Posts rules
+    match /posts/{postId} {
+      // Anyone logged in can read posts
+      allow read: if request.auth != null;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+
+      // Only creator can update/delete their posts (excluding likes)
+      allow update, delete: if request.auth != null
+                        && request.auth.uid == resource.data.userId
+                        && !(request.resource.data.keys().hasAny(['likes']) &&
+                             !(request.resource.data.likes == resource.data.likes));
+
+      // Allow users to like/unlike by updating only the likes array
+      allow update: if request.auth != null &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
+                request.resource.data.userId == resource.data.userId;
+
+      // Anyone logged in can create posts
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      
+      // Allow others to update ONLY the commentsCount field
+      allow update: if request.auth != null &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount']);
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if request.auth != null;
+
+        // Allow comment creation only if userId is set and matches the authenticated user
+        allow create: if request.auth != null &&
+                  request.resource.data.keys().hasAll(['userId', 'content']) &&
+                  request.resource.data.userId == request.auth.uid;
+
+        // Allow only comment creator to update/delete their comment
+        allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      }
+    }
     
-       // Allow users to read and write their own health schedules
-       match /health_schedules/{userId} {
-         allow read, write: if request.auth != null && request.auth.uid == userId;
-       }
+    // Allow users to read and write their own family planning data
+    match /familyPlanning/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
     
-       // Default deny
-       match /{document=**} {
-         allow read, write: if false;
-       }
-     }
+    // Allow users to read and write their own health surveys
+    match /health_surveys/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow users to read and write their own health schedules
+    match /health_schedules/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+        // ***** ADD THIS BLOCK FOR RECIPES *****
+    match /recipes/{recipeId} {
+      // Allow authenticated users to create new recipes
+      // Ensure the recipe being created has a 'userId' field matching the creator's UID
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      
+      // Allow users to read, update, and delete only their own recipes
+      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+    // ***** END OF RECIPES BLOCK *****
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+   }
    }
    ```
 
@@ -198,6 +230,8 @@ Eight main feature buttons providing access to:
    GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
    PERSPECTIVE_API_KEY=YOUR_PERSPECTIVE_API_KEY
    GEMINI_API_KEY=YOUR_GEMENI_API_KEY
+   DASHSCOPE_API_KEY=YOUR_DASHSCOPE_API_KEY
+   PUBMED_API_KEY=YOUR_PUBMED_API_KEY
    ```
 
 8. **Example google-services.json format**
