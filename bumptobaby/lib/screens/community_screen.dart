@@ -188,7 +188,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
         backgroundColor: Color(0xFF1E6091),
         actions: [
           IconButton(
-            icon: Icon(Icons.search),
+            icon: Icon(Icons.search, color: Colors.white),
             onPressed: () {
               // Implement search functionality
             },

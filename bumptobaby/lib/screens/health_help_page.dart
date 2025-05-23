@@ -18,6 +18,12 @@ import 'package:bumptobaby/utils/chat_actions.dart';
 class HealthHelpPage extends StatefulWidget {
   const HealthHelpPage({super.key});
 
+  // Static method to clear chat history
+  static Future<void> clearChatHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('chat_messages');
+  }
+
   @override
   State<HealthHelpPage> createState() => _HealthHelpPageState();
 }
@@ -721,11 +727,14 @@ Adakah anda ingin membuka pautan ini?
 
   Future<void> _clearChat() async {
     if (mounted) {
-        setState(() {
-            _messages.clear();
-            _filteredMessages.clear(); // Clear filtered messages too
-        });
-        await _saveMessages(); // This will save an empty list
+      setState(() {
+        _messages.clear();
+        _filteredMessages.clear(); // Clear filtered messages too
+      });
+      await HealthHelpPage.clearChatHistory(); // Use the new static method
+      
+      // Add initial greeting after clearing
+      _sendInitialGreeting();
     }
   }
 
@@ -1013,7 +1022,6 @@ Adakah anda ingin membuka pautan ini?
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        toolbarHeight: 70, // Make the header taller
         title: Row(
                 children: [
                   Text(
