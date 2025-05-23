@@ -197,7 +197,10 @@ class _RecipeDisplayScreenState extends State<RecipeDisplayScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.recipe.title, style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.black)),
+        title: Text(
+          'Suggested Recipe',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.black)
+        ),
         backgroundColor: const Color(0xFFF8AFAF),
         iconTheme: const IconThemeData(color: Colors.black),
         actions: [
@@ -212,8 +215,22 @@ class _RecipeDisplayScreenState extends State<RecipeDisplayScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Description first
-            Text(widget.recipe.description, style: GoogleFonts.poppins(fontSize: 16, fontStyle: FontStyle.italic)),
+            // Recipe title moved here, below the app bar
+            Text(
+              widget.recipe.title,
+              style: GoogleFonts.poppins(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF4E342E),
+              ),
+            ),
+            const SizedBox(height: 16), // Add spacing after title
+            
+            // Description
+            Text(
+              widget.recipe.description, 
+              style: GoogleFonts.poppins(fontSize: 16, fontStyle: FontStyle.italic)
+            ),
             const SizedBox(height: 12),
             
             // Capsules/Tags moved here (right after description)
