@@ -9,6 +9,7 @@ import 'package:bumptobaby/screens/health_survey_screen.dart';
 import 'package:bumptobaby/screens/login_screen.dart';
 import 'package:bumptobaby/screens/community_screen.dart'; // For PostData model
 import 'package:intl/intl.dart'; // For date formatting
+import 'package:bumptobaby/screens/health_help_page.dart'; // Added for HealthHelpPage
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -554,6 +555,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     });
     
     try {
+      // Clear chat history before signing out
+      await HealthHelpPage.clearChatHistory();
+      
       await _auth.signOut();
       
       Navigator.of(context).pushAndRemoveUntil(
