@@ -379,6 +379,211 @@ class FamilyPlanningService {
     return fertileDays;
   }
   
+  // AI-enhanced fertility prediction that considers historical data and contraceptive use
+  Future<Map<String, dynamic>> getAIEnhancedPredictions() async {
+    try {
+      final data = await getFamilyPlanningData();
+      if (data == null) {
+        throw Exception('No data available for AI predictions');
+      }
+      
+      // Get basic predictions first
+      final basicFertileDays = calculateFertileDays(data.lastPeriodDate, data.cycleDuration);
+      final basicNextPeriods = predictNextPeriods(data.lastPeriodDate, data.cycleDuration, count: 3);
+      
+      // Enhanced predictions considering historical data
+      List<DateTime> enhancedFertileDays = List.from(basicFertileDays);
+      List<DateTime> enhancedNextPeriods = List.from(basicNextPeriods);
+      
+      // Cycle irregularity detection
+      String? irregularityMessage;
+      int averageCycle = data.cycleDuration;
+      bool hasIrregularity = false;
+      
+      // If we have enough historical period data (at least 3 periods)
+      if (data.periodDates.length >= 3) {
+        // Sort period dates in ascending order
+        final sortedPeriods = List<DateTime>.from(data.periodDates)..sort((a, b) => a.compareTo(b));
+        List<int> cycleLengths = [];
+        
+        for (int i = 1; i < sortedPeriods.length; i++) {
+          cycleLengths.add(sortedPeriods[i].difference(sortedPeriods[i-1]).inDays);
+        }
+        
+        // Calculate average cycle length from actual data
+        int totalDays = 0;
+        int cyclesToCount = 0;
+        
+        for (int i = 0; i < cycleLengths.length; i++) {
+          final difference = cycleLengths[i];
+          // Only count reasonable cycle lengths (21-40 days)
+          if (difference >= 21 && difference <= 40) {
+            totalDays += difference;
+            cyclesToCount++;
+          }
+        }
+        
+        // If we have valid cycles, use the average cycle length
+        if (cyclesToCount > 0) {
+          averageCycle = (totalDays / cyclesToCount).round();
+          
+          // Recalculate predictions with the data-driven cycle length
+          enhancedNextPeriods = predictNextPeriods(data.lastPeriodDate, averageCycle, count: 3);
+          
+          // Calculate ovulation with the new average
+          final ovulationDay = averageCycle - 14;
+          enhancedFertileDays = [];
+          
+          // Adjust fertile window based on the new average cycle
+          for (int i = ovulationDay - 5; i <= ovulationDay; i++) {
+            enhancedFertileDays.add(data.lastPeriodDate.add(Duration(days: i)));
+          }
+          
+          // Detect irregularities in the last 2-3 cycles
+          if (cycleLengths.length >= 2) {
+            final lastCycle = cycleLengths.last;
+            final secondLastCycle = cycleLengths[cycleLengths.length - 2];
+            
+            // Check if both of the last two cycles are significantly different from average
+            if ((lastCycle - averageCycle).abs() > 5 && (secondLastCycle - averageCycle).abs() > 5) {
+              if (lastCycle > averageCycle && secondLastCycle > averageCycle) {
+                irregularityMessage = "Your last 2 cycles were longer than usual";
+                hasIrregularity = true;
+              } else if (lastCycle < averageCycle && secondLastCycle < averageCycle) {
+                irregularityMessage = "Your last 2 cycles were shorter than usual";
+                hasIrregularity = true;
+              } else {
+                irregularityMessage = "Your recent cycles have been irregular";
+                hasIrregularity = true;
+              }
+            }
+            // Check if just the last cycle is very different
+            else if ((lastCycle - averageCycle).abs() > 7) {
+              if (lastCycle > averageCycle) {
+                irregularityMessage = "Your last cycle was longer than usual";
+                hasIrregularity = true;
+              } else {
+                irregularityMessage = "Your last cycle was shorter than usual";
+                hasIrregularity = true;
+              }
+            }
+          }
+        }
+      }
+      
+      // PMS prediction based on historical data
+      DateTime? pmsPredictionStart;
+      if (enhancedNextPeriods.isNotEmpty) {
+        // PMS typically starts 7-10 days before period
+        pmsPredictionStart = enhancedNextPeriods.first.subtract(Duration(days: 7));
+      }
+      
+      // Consider contraceptive methods and adjust predictions
+      if (data.contraceptiveMethodsUsed.contains('pill') && data.pillTakenDates.isNotEmpty) {
+        // If using pills consistently, reduce fertility window by 1-2 days
+        if (_isPillUsedConsistently(data.pillTakenDates)) {
+          enhancedFertileDays = enhancedFertileDays.sublist(1); // Reduce fertile window
+        }
+      }
+      
+      if (data.contraceptiveMethodsUsed.contains('injection') && data.injectionDates.isNotEmpty) {
+        // If recent injection (within last 3 months), significantly reduce fertility
+        final mostRecentInjection = data.injectionDates.reduce((a, b) => a.isAfter(b) ? a : b);
+        final daysSinceInjection = DateTime.now().difference(mostRecentInjection).inDays;
+        
+        if (daysSinceInjection < 90) { // Typical injection effectiveness period
+          // Mark as very low fertility
+          enhancedFertileDays = [];
+        }
+      }
+      
+      // Calculate prediction confidence (higher with more historical data)
+      double confidenceScore = 0.6; // Base confidence
+      
+      // Increase confidence with more historical data
+      if (data.periodDates.length >= 6) {
+        confidenceScore = 0.85;
+      } else if (data.periodDates.length >= 3) {
+        confidenceScore = 0.75;
+      }
+      
+      // Decrease confidence if cycle lengths are highly variable
+      if (data.periodDates.length >= 3) {
+        final sortedPeriods = List<DateTime>.from(data.periodDates)..sort((a, b) => a.compareTo(b));
+        List<int> cycleLengths = [];
+        
+        for (int i = 1; i < sortedPeriods.length; i++) {
+          cycleLengths.add(sortedPeriods[i].difference(sortedPeriods[i-1]).inDays);
+        }
+        
+        // Calculate standard deviation of cycle lengths
+        final mean = cycleLengths.reduce((a, b) => a + b) / cycleLengths.length;
+        final variance = cycleLengths.map((length) => pow(length - mean, 2)).reduce((a, b) => a + b) / cycleLengths.length;
+        final stdDev = sqrt(variance);
+        
+        // If standard deviation is high, reduce confidence
+        if (stdDev > 5) {
+          confidenceScore -= 0.15;
+          // If we haven't already detected irregularity
+          if (!hasIrregularity) {
+            irregularityMessage = "Your cycle length varies significantly";
+            hasIrregularity = true;
+          }
+        }
+      }
+      
+      // Check if ovulation might be late this cycle
+      bool possibleLateOvulation = false;
+      String? ovulationMessage;
+      if (data.periodDates.length >= 3) {
+        final today = DateTime.now();
+        final daysSinceLastPeriod = today.difference(data.lastPeriodDate).inDays;
+        
+        // If we're past the expected ovulation day but not yet at the next period
+        if (daysSinceLastPeriod > averageCycle - 14 && daysSinceLastPeriod < averageCycle) {
+          possibleLateOvulation = true;
+          ovulationMessage = "Ovulation may have been late this cycle. Want to adjust your fertile window prediction?";
+        }
+      }
+      
+      return {
+        'enhancedFertileDays': enhancedFertileDays,
+        'enhancedNextPeriods': enhancedNextPeriods,
+        'confidenceScore': confidenceScore,
+        'usingAI': true,
+        'averageCycle': averageCycle,
+        'irregularityMessage': irregularityMessage,
+        'hasIrregularity': hasIrregularity,
+        'pmsPredictionStart': pmsPredictionStart?.toIso8601String(),
+        'possibleLateOvulation': possibleLateOvulation,
+        'ovulationMessage': ovulationMessage,
+      };
+    } catch (e) {
+      print('Error in AI predictions: $e');
+      // Fall back to basic predictions
+      return {
+        'usingAI': false,
+      };
+    }
+  }
+  
+  // Helper to check if pills are taken consistently
+  bool _isPillUsedConsistently(List<DateTime> pillDates) {
+    if (pillDates.isEmpty) return false;
+    
+    // Check last 28 days
+    final today = DateTime.now();
+    final oneMonthAgo = today.subtract(Duration(days: 28));
+    
+    // Count pills taken in last 28 days
+    final recentPills = pillDates.where((date) => 
+      date.isAfter(oneMonthAgo) && date.isBefore(today)
+    ).length;
+    
+    // If at least 24 out of 28 days, consider consistent
+    return recentPills >= 24;
+  }
+  
   // Predict next periods based on last period and cycle length
   List<DateTime> predictNextPeriods(DateTime lastPeriod, int cycleDuration, {int count = 3}) {
     List<DateTime> predictedPeriods = [];
