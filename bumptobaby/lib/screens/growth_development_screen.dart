@@ -601,12 +601,20 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
         Here is their recent fetal growth and diary data (date, fetal size, mood, cravings, journal snippet):
         ${formattedGrowthData.join('\n')}
 
-        Based on this information, provide a short (1-2 sentences), encouraging, and relevant insight or piece of advice for the user related to their current stage or observed growth pattern.
-        Focus on positive and general advice. Please alert if there is abnormal growth or development based on the data especially fetal size.
+        Based on this information, provide a short (1-2 sentences), encouraging, precise, and relevant insight or piece of advice for the user related to their current stage or observed growth pattern.
+        Focus on positive and general advice. Please alert and give alert if there is abnormal growth or development based on the data especially fetal size and the stunted growth of baby based on the WHO growth standard.
+        Please alert if there is any negative description or mood of the user, if so, please ask the user if they are feeling okay and if they need help, try to give them advice and motivation.
         Avoid making medical diagnoses or specific medical recommendations. Be empathetic and supportive.
         If there's not enough data or the data seems unusual for making a specific insight, provide a general encouraging message for their current pregnancy stage.
         Example Insight: "It's great that you're tracking your journey in $currentWeekStage! Remember to stay hydrated and listen to your body."
         Another Example: "Seeing your progress is wonderful! Many experience [common symptom for $currentWeekStage] around this time, so gentle walks can be beneficial if you're feeling up to it."
+
+        Additional diary entry details to consider:
+        Latest Entry Title: ${sortedEntries.isNotEmpty ? sortedEntries.last.title : 'N/A'}
+        Latest Entry Description: ${sortedEntries.isNotEmpty ? sortedEntries.last.description : 'N/A'}
+        Latest Entry Mood: ${sortedEntries.isNotEmpty ? (sortedEntries.last.mood ?? 'N/A') : 'N/A'}
+
+        Please analyze the title, description, and mood for any signs of distress or negative emotions. If detected, provide supportive and encouraging words while suggesting seeking support if needed.
         """;
       } else { // GrowthScreenMode.baby
         // --- Baby Mode Prompt ---
@@ -1669,7 +1677,10 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
     // Sort entries by creation time (newest first)
     entriesForSelectedDate.sort((a, b) => b.id.compareTo(a.id));
 
-    return Column(
+    return Stack(
+      children: [
+        // Main Content Column (Behind Calendar)
+        Column(
       children: [
         // Calendar Header (Title and Toggle Button)
         Padding(
@@ -1679,7 +1690,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
             children: [
               Text(
                 _isCalendarExpanded 
-                    ? DateFormat('MMMM yyyy').format(_selectedDiaryDate) 
+                        ? "Choose A Day to View" 
                     : "Week of ${DateFormat('MMM d').format(_selectedDiaryDate.subtract(Duration(days: _selectedDiaryDate.weekday - 1)))}",
                 style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
               ),
@@ -1698,15 +1709,13 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
           ),
         ),
         
-        // Conditional Calendar View
-        if (_isCalendarExpanded)
-          _buildMonthCalendarView()
-        else
+            // Week View Calendar (Always visible when not expanded)
+            if (!_isCalendarExpanded)
           _buildWeekCalendarView(),
 
-        const Divider(),
+            const Divider(height: 1),
 
-        // Diary Entries for selected day
+            // Diary Entries List
         Expanded(
           child: entriesForSelectedDate.isEmpty
               ? Center(
@@ -1714,8 +1723,10 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                   "No entries for ${DateFormat('MMM d, yyyy').format(_selectedDiaryDate)}.\nTap 'Add New Entry' to log your day!",
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey),
-                ))
+                      ),
+                    )
               : ListView.builder(
+                      padding: EdgeInsets.zero,
                   itemCount: entriesForSelectedDate.length,
                   itemBuilder: (context, index) {
                     final entry = entriesForSelectedDate[index];
@@ -1723,14 +1734,13 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       child: Padding(
                         padding: const EdgeInsets.all(8.0),
-                        child: Row( // Use Row for alignment
+                            child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded( // Main content takes available space
+                                Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Pregnancy Stage Badge (Only for Pregnancy Mode)
                                   if (_selectedMode == GrowthScreenMode.pregnancy && entry.pregnancyStage != null)
                                     Container(
                                       margin: const EdgeInsets.only(bottom: 8.0),
@@ -1741,7 +1751,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                                         border: Border.all(color: Color(0xFF78A0E5), width: 1),
                                       ),
                                       child: Text(
-                                        "${entry.pregnancyStage} (${_getTrimesterFromWeek(entry.pregnancyStage!)})", // pregnancyStage is checked for null above
+                                            "${entry.pregnancyStage} (${_getTrimesterFromWeek(entry.pregnancyStage!)})",
                                         style: GoogleFonts.poppins(
                                           fontSize: 12, 
                                           fontWeight: FontWeight.w600,
@@ -1749,7 +1759,6 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                                         ),
                                       ),
                                     ),
-                                  
                                   if (entry.imagePath != null && entry.imagePath!.isNotEmpty)
                                     Container(
                                       height: 150,
@@ -1781,14 +1790,15 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                                         ),
                                       ),
                                     ),
-                                  if (entry.imagePath != null && entry.imagePath!.isNotEmpty) const SizedBox(height: 8),
-                                  // Display Title (bold) and Description
-                                  Text(entry.title, style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 18)),
+                                      if (entry.imagePath != null && entry.imagePath!.isNotEmpty)
+                                        const SizedBox(height: 8),
+                                      Text(entry.title,
+                                          style: GoogleFonts.poppins(
+                                              fontWeight: FontWeight.bold, fontSize: 18)),
                                   const SizedBox(height: 4),
-                                  Text(entry.description, style: GoogleFonts.poppins(fontSize: 14)),
+                                      Text(entry.description,
+                                          style: GoogleFonts.poppins(fontSize: 14)),
                                   const SizedBox(height: 8),
-                                  
-                                  // Conditional display of other details based on mode
                                   if (_selectedMode == GrowthScreenMode.pregnancy)
                                     Text(
                                       "Mood: ${entry.mood ?? 'N/A'}\nCravings: ${entry.cravings ?? 'N/A'}\nFetal Size: ${entry.fetalSizeDisplay ?? 'N/A'}",
@@ -1802,7 +1812,6 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                                 ],
                               ),
                             ),
-                            // Delete Button
                             IconButton(
                               icon: Icon(Icons.delete_outline, color: Colors.redAccent.withOpacity(0.7)),
                               tooltip: "Delete Entry",
@@ -1825,17 +1834,60 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
             icon: const Icon(Icons.add_comment_outlined),
             label: Text('Add New Entry', style: GoogleFonts.poppins()),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).primaryColor, // Use theme's primary color
+                  backgroundColor: Theme.of(context).primaryColor,
               foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50), // Make button wide
+                  minimumSize: const Size(double.infinity, 50),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
             onPressed: () {
-              // TODO: Implement Add Diary Entry Dialog/Screen
               _showAddEntryDialog(context);
             },
+              ),
+            ),
+          ],
+        ),
+
+        // Floating Calendar Overlay (When Expanded)
+        if (_isCalendarExpanded)
+          Positioned(
+            top: 60, // Position below the header
+            left: 0,
+            right: 0,
+            child: Container(
+              color: Colors.white,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Remove the month display row
+                  // Padding(
+                  //   padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  //   child: Row(
+                  //     mainAxisAlignment: MainAxisAlignment.center,
+                  //     children: [
+                  //       IconButton(
+                  //         icon: const Icon(Icons.chevron_left),
+                  //         onPressed: _goToPreviousMonth,
+                  //       ),
+                  //       Text(
+                  //         DateFormat('MMMM').format(_selectedDiaryDate),
+                  //         style: GoogleFonts.poppins(
+                  //           fontSize: 18,
+                  //           fontWeight: FontWeight.bold,
+                  //         ),
+                  //       ),
+                  //       IconButton(
+                  //         icon: const Icon(Icons.chevron_right),
+                  //         onPressed: _goToNextMonth,
+                  //       ),
+                  //     ],
+                  //   ),
+                  // ),
+                  _buildMonthCalendarView(),
+                  const Divider(height: 1),
+                ],
+              ),
           ),
         ),
       ],
@@ -2042,29 +2094,42 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
 
   void _showAddEntryDialog(BuildContext context) {
     // Initialize controllers and default values for the dialog
-    final titleController = TextEditingController(); // New
-    final descriptionController = TextEditingController(); // New
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final cravingsController = TextEditingController();
+    final moodController = TextEditingController();
+    final fetalSizeController = TextEditingController();
+    final heightController = TextEditingController();
+    final weightController = TextEditingController();
 
-    final cravingsController = TextEditingController(); // Only for pregnancy
-    final moodController = TextEditingController(); // Only for pregnancy
-    final fetalSizeController = TextEditingController(); // Only for pregnancy
-    final heightController = TextEditingController(); // Only for baby
-    final weightController = TextEditingController(); // Only for baby
-
-    FetalSizeUnit selectedFetalSizeUnit = FetalSizeUnit.cm; // Default for pregnancy
-    LengthUnit selectedHeightUnit = LengthUnit.cm; // Default for baby height
-    WeightUnit selectedWeightUnit = WeightUnit.kg; // Default for baby weight
-    String? selectedPregnancyStage = _selectedMode == GrowthScreenMode.pregnancy ? "Week 12" : null; // Default for pregnancy
+    FetalSizeUnit selectedFetalSizeUnit = FetalSizeUnit.cm;
+    LengthUnit selectedHeightUnit = LengthUnit.cm;
+    WeightUnit selectedWeightUnit = WeightUnit.kg;
+    
+    // Get the latest pregnancy stage from existing entries, or default to Week 12
+    String initialPregnancyStage = "Week 12";
+    if (_selectedMode == GrowthScreenMode.pregnancy) {
+      final latestEntry = _allDiaryEntries
+          .where((entry) => entry.entryType == 'fetal' && entry.pregnancyStage != null)
+          .toList()
+        ..sort((a, b) => b.date.compareTo(a.date));
+      
+      if (latestEntry.isNotEmpty && latestEntry.first.pregnancyStage != null) {
+        initialPregnancyStage = latestEntry.first.pregnancyStage!;
+      }
+    }
+    
     String? selectedImagePath;
     final ImagePicker picker = ImagePicker();
     final List<String> pregnancyStages = List.generate(42, (index) => "Week ${index + 1}");
-
-    // Determine entry type based on the current mode for clearer code
     final String entryType = _selectedMode == GrowthScreenMode.pregnancy ? "fetal" : "baby";
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
+        // Create a mutable wrapper for the pregnancy stage
+        final pregnancyStageState = ValueNotifier<String>(initialPregnancyStage);
+        
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -2110,6 +2175,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                       controller: titleController,
                       decoration: InputDecoration(labelText: "Title", hintText: "Enter a title for your entry", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
                       style: GoogleFonts.poppins(),
+                      textInputAction: TextInputAction.next, // Add this line
                     ),
                     const SizedBox(height: 10),
                     
@@ -2119,24 +2185,231 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                       decoration: InputDecoration(labelText: "Description", hintText: "How was the day? Any details...", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
                       maxLines: 3,
                       style: GoogleFonts.poppins(),
+                      textInputAction: TextInputAction.next, // Add this line
                     ),
                     const SizedBox(height: 10),
 
-                    // Mode-specific fields
-                    ..._buildModeSpecificFields(
-                      setDialogState, 
-                      entryType,
-                      moodController, 
-                      cravingsController, 
-                      fetalSizeController, 
-                      heightController, 
-                      weightController, 
-                      selectedFetalSizeUnit, 
-                      selectedHeightUnit, 
-                      selectedWeightUnit, 
-                      selectedPregnancyStage,
-                      pregnancyStages
-                    ),
+                    if (_selectedMode == GrowthScreenMode.pregnancy) ...[
+                      // Pregnancy Stage Dropdown
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 15.0),
+                        child: DropdownButtonFormField<String>(
+                          isExpanded: true,
+                          value: pregnancyStageState.value,
+                          decoration: InputDecoration(
+                            labelText: 'Pregnancy Stage',
+                            border: OutlineInputBorder(),
+                            labelStyle: GoogleFonts.poppins(),
+                          ),
+                          items: pregnancyStages.map((String stage) {
+                            return DropdownMenuItem<String>(
+                              value: stage,
+                              child: Text(stage, style: GoogleFonts.poppins()),
+                            );
+                          }).toList(),
+                          onChanged: (String? value) {
+                            if (value != null) {
+                              setDialogState(() {
+                                pregnancyStageState.value = value;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      
+                      // Mood TextField
+                      TextField(
+                        controller: moodController,
+                        decoration: InputDecoration(
+                          labelText: "Mood",
+                          hintText: "e.g., Happy, Tired",
+                          border: OutlineInputBorder(),
+                          labelStyle: GoogleFonts.poppins(),
+                        ),
+                        style: GoogleFonts.poppins(),
+                        textInputAction: TextInputAction.next, // Add this line
+                      ),
+                      const SizedBox(height: 10),
+                      
+                      // Cravings TextField
+                      TextField(
+                        controller: cravingsController,
+                        decoration: InputDecoration(
+                          labelText: "Cravings",
+                          hintText: "e.g., Pickles, Chocolate",
+                          border: OutlineInputBorder(),
+                          labelStyle: GoogleFonts.poppins(),
+                        ),
+                        style: GoogleFonts.poppins(),
+                        textInputAction: TextInputAction.next, // Add this line
+                      ),
+                      const SizedBox(height: 10),
+                      
+                      // Fetal Size Row
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: TextField(
+                              controller: fetalSizeController,
+                              decoration: InputDecoration(
+                                labelText: "Fetal Size",
+                                hintText: "Enter size",
+                                border: OutlineInputBorder(),
+                                labelStyle: GoogleFonts.poppins(),
+                              ),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                              ],
+                              style: GoogleFonts.poppins(),
+                              textInputAction: TextInputAction.done, // Add this line
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: Container(
+                              height: 59,
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.shade400),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Center(
+                                child: DropdownButton<FetalSizeUnit>(
+                                  value: selectedFetalSizeUnit,
+                                  underline: Container(),
+                                  items: FetalSizeUnit.values.map((FetalSizeUnit unit) {
+                                    return DropdownMenuItem<FetalSizeUnit>(
+                                      value: unit,
+                                      child: Text(unit.name, style: GoogleFonts.poppins()),
+                                    );
+                                  }).toList(),
+                                  onChanged: (FetalSizeUnit? value) {
+                                    if (value != null) {
+                                      setDialogState(() {
+                                        selectedFetalSizeUnit = value;
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      // Baby mode fields
+                      // Height
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: TextField(
+                              controller: heightController,
+                              decoration: InputDecoration(
+                                labelText: "Height",
+                                hintText: "Enter height",
+                                border: OutlineInputBorder(),
+                                labelStyle: GoogleFonts.poppins(),
+                              ),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                              ],
+                              style: GoogleFonts.poppins(),
+                              textInputAction: TextInputAction.next, // Add this line
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: Container(
+                              height: 59, // Match TextField height
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.shade400),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Center(
+                                child: DropdownButton<LengthUnit>(
+                                  value: selectedHeightUnit,
+                                  underline: Container(),
+                                  items: LengthUnit.values.map((LengthUnit unit) {
+                                    return DropdownMenuItem<LengthUnit>(
+                                      value: unit,
+                                      child: Text(unit.name, style: GoogleFonts.poppins()),
+                                    );
+                                  }).toList(),
+                                  onChanged: (LengthUnit? value) {
+                                    if (value != null) {
+                                      setDialogState(() {
+                                        selectedHeightUnit = value;
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      // Weight
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: TextField(
+                              controller: weightController,
+                              decoration: InputDecoration(
+                                labelText: "Weight",
+                                hintText: "Enter weight",
+                                border: OutlineInputBorder(),
+                                labelStyle: GoogleFonts.poppins(),
+                              ),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                              ],
+                              style: GoogleFonts.poppins(),
+                              textInputAction: TextInputAction.done, // Add this line
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: Container(
+                              height: 59, // Match TextField height
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.shade400),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Center(
+                                child: DropdownButton<WeightUnit>(
+                                  value: selectedWeightUnit,
+                                  underline: Container(),
+                                  items: WeightUnit.values.map((WeightUnit unit) {
+                                    return DropdownMenuItem<WeightUnit>(
+                                      value: unit,
+                                      child: Text(unit.name, style: GoogleFonts.poppins()),
+                                    );
+                                  }).toList(),
+                                  onChanged: (WeightUnit? value) {
+                                    if (value != null) {
+                                      setDialogState(() {
+                                        selectedWeightUnit = value;
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -2149,11 +2422,19 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                   child: Text("Save Entry", style: GoogleFonts.poppins()),
                   onPressed: () async {
                     if (titleController.text.isEmpty) {
-                       if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Title cannot be empty!", style: GoogleFonts.poppins()))); }
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Title cannot be empty!", style: GoogleFonts.poppins()))
+                        );
+                      }
                        return;
                     }
                     if (descriptionController.text.isEmpty) {
-                       if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Description cannot be empty!", style: GoogleFonts.poppins()))); }
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Description cannot be empty!", style: GoogleFonts.poppins()))
+                        );
+                      }
                        return;
                     }
 
@@ -2167,8 +2448,14 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                     if (_selectedMode == GrowthScreenMode.pregnancy) {
                       double fetalSize = 0.0;
                       if (fetalSizeController.text.isNotEmpty) {
-                        try { fetalSize = double.parse(fetalSizeController.text); } catch (e) { /* Handle error or default */ }
+                        try {
+                          fetalSize = double.parse(fetalSizeController.text);
+                        } catch (e) {
+                          developer.log('Error parsing fetal size: $e', name: 'GrowthDevelopmentScreen');
                       }
+                      }
+                      
+                      // Create the diary entry with the current value of pregnancyStageState
                       newEntry = DiaryEntry(
                         date: entryDate,
                         imagePath: selectedImagePath,
@@ -2179,8 +2466,11 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
                         cravings: cravingsController.text.isNotEmpty ? cravingsController.text : "None",
                         fetalSize: fetalSize > 0 ? fetalSize : null,
                         fetalSizeUnit: selectedFetalSizeUnit,
-                        pregnancyStage: selectedPregnancyStage,
+                        pregnancyStage: pregnancyStageState.value, // Use the current value from the ValueNotifier
                       );
+                      
+                      // Log the pregnancy stage being saved
+                      developer.log('Saving diary entry with pregnancy stage: ${pregnancyStageState.value}', name: 'GrowthDevelopmentScreen');
                     } else {
                       double height = 0.0;
                       if (heightController.text.isNotEmpty) {
@@ -2270,7 +2560,7 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
     FetalSizeUnit selectedFetalSizeUnit,
     LengthUnit selectedHeightUnit,
     WeightUnit selectedWeightUnit,
-    String? selectedPregnancyStage,
+    String selectedPregnancyStage,
     List<String> pregnancyStages,
   ) {
     if (entryType == "fetal") {
@@ -2279,15 +2569,26 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
         // Pregnancy Stage Dropdown
         Container(
           margin: const EdgeInsets.only(bottom: 15.0),
-          child: DropdownButton<String>(
+          child: DropdownButtonFormField<String>(
             isExpanded: true,
             value: selectedPregnancyStage,
-            hint: Text('Select Pregnancy Stage', style: GoogleFonts.poppins()),
+            decoration: InputDecoration(
+              labelText: 'Pregnancy Stage',
+              border: OutlineInputBorder(),
+              labelStyle: GoogleFonts.poppins(),
+            ),
             items: pregnancyStages.map((String stage) {
-              return DropdownMenuItem<String>(value: stage, child: Text(stage, style: GoogleFonts.poppins()));
+              return DropdownMenuItem<String>(
+                value: stage,
+                child: Text(stage, style: GoogleFonts.poppins()),
+              );
             }).toList(),
             onChanged: (String? value) {
-              if (value != null) { setState(() { selectedPregnancyStage = value; }); }
+              if (value != null) {
+                setState(() {
+                  selectedPregnancyStage = value;
+                });
+              }
             },
           ),
         ),
@@ -2311,8 +2612,10 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
               child: TextField(
                 controller: fetalSizeController,
                 decoration: InputDecoration(labelText: "Fetal Size", hintText: "Enter size", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                ],
                 style: GoogleFonts.poppins(),
               ),
             ),
@@ -2351,8 +2654,10 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
               child: TextField(
                 controller: heightController,
                 decoration: InputDecoration(labelText: "Height", hintText: "Enter height", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                ],
                 style: GoogleFonts.poppins(),
               ),
             ),
@@ -2388,8 +2693,10 @@ class _GrowthDevelopmentScreenState extends State<GrowthDevelopmentScreen> with 
               child: TextField(
                 controller: weightController,
                 decoration: InputDecoration(labelText: "Weight", hintText: "Enter weight", border: OutlineInputBorder(), labelStyle: GoogleFonts.poppins()),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                ],
                 style: GoogleFonts.poppins(),
               ),
             ),
